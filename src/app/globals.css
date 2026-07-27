@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
+/* Lock "dark:" to an explicit .dark ancestor class instead of the OS
+   preference — this app now commits to one hero look for every visitor
+   rather than adapting to system light/dark mode. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b1130;
+  --foreground: #f5f6fa;
+  --hero-red: #e0262f;
+  --hero-red-dark: #9c151c;
+  --hero-blue: #1b2a6b;
+  --hero-blue-dark: #0b1130;
+  --hero-gold: #ffcc33;
 }
 
 @theme inline {
@@ -12,15 +22,126 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* 列印樣式：A4 字卡列印用                                                   */
+/* ---------------------------------------------------------------------- */
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    height: 100%;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.print-grid {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(2, 1fr);
 }
+
+.print-grid-cols-1 {
+  grid-template-columns: repeat(1, 1fr);
+}
+
+@media print {
+  .print-grid {
+    /* Width fixed to the A4 printable area (210mm minus the 10mm @page
+       margin on each side). Height is intentionally NOT fixed here — each
+       PrintCard is given an explicit height (see PrintView's cardHeightMm)
+       so the grid's total height is just the sum of its rows. Relying on a
+       percentage/fraction of the container to divide the page evenly broke
+       down at higher per-page counts (rows grew past the physical page and
+       spilled onto a second sheet); explicit per-card heights are exact. */
+    width: 190mm;
+    page-break-after: always;
+    break-after: page;
+  }
+}
+
+.print-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #999;
+  padding: 8mm;
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+.print-card-compact {
+  padding: 3mm;
+}
+
+/* ---------------------------------------------------------------------- */
+/* 注音符號：直式排列在中文字右側                                             */
+/* ---------------------------------------------------------------------- */
+
+.zhuyin-word {
+  display: inline-flex;
+  align-items: flex-start;
+}
+
+.zhuyin-char {
+  display: inline-flex;
+  align-items: flex-start;
+  line-height: 1.1;
+  margin-right: 0.3em;
+}
+
+.zhuyin-char:last-child {
+  margin-right: 0;
+}
+
+.zhuyin-mark-wrap {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  margin-left: 0.15em;
+}
+
+.zhuyin-base {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-size: 0.38em;
+  line-height: 1.15;
+  letter-spacing: 0.05em;
+}
+
+.zhuyin-tone {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-size: 0.3em;
+  line-height: 1;
+  margin-left: 0.02em;
+  align-self: center;
+}
+

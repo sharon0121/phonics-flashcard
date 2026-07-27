@@ -5,6 +5,7 @@ export interface Word {
   zh: string;          // Traditional Chinese e.g. "貓"
   zhuyin: string;      // Zhuyin phonetics e.g. "ㄇㄠ"
   en: string;          // Simple English definition, max 10 words
+  sentence: string;    // Simple everyday example sentence using the word
   emoji: string;       // Single emoji
   phase: number;       // 1-6
   phaseLabel: string;  // "Phase 1: Short Vowels"
