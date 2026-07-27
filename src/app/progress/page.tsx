@@ -321,18 +321,23 @@ export default function ProgressPage() {
         <div className="mt-3 flex max-h-80 flex-wrap gap-2 overflow-y-auto rounded-lg bg-zinc-50 p-3">
           {pickerWords.map((w) => {
             const selected = planWeekIds.includes(w.id);
+            const isLearned = !!(progress[w.id]?.canPronounce && progress[w.id]?.canUnderstand);
             return (
               <button
                 key={w.id}
                 type="button"
                 onClick={() => handleToggleWord(w.id)}
+                disabled={isLearned}
+                title={isLearned ? '已經標記為完全學會' : undefined}
                 className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                  selected
-                    ? 'bg-[var(--hero-gold)] text-zinc-900'
-                    : 'bg-white text-zinc-600 hover:bg-zinc-100'
+                  isLearned
+                    ? 'cursor-not-allowed bg-zinc-200 text-zinc-400'
+                    : selected
+                      ? 'bg-[var(--hero-gold)] text-zinc-900'
+                      : 'bg-white text-zinc-600 hover:bg-zinc-100'
                 }`}
               >
-                {selected ? '✓ ' : ''}
+                {isLearned ? '✔︎ ' : selected ? '✓ ' : ''}
                 {w.word}
               </button>
             );
