@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { phases, getWordsByPhase } from '@/data/words';
 import type { Word } from '@/lib/types';
 import PrintCard from '@/components/PrintCard';
+import EnglishSubNav from '@/components/EnglishSubNav';
 
 const PER_PAGE_OPTIONS = [2, 4, 6, 8, 10, 12] as const;
 
@@ -64,6 +65,7 @@ export default function PrintView() {
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
       <div className="no-print">
+        <EnglishSubNav />
         <h1 className="text-2xl font-bold text-[var(--hero-gold)]">列印字卡</h1>
 
         <div className="mt-4 flex flex-wrap gap-2">

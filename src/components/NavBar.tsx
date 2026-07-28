@@ -5,11 +5,14 @@ import { usePathname } from 'next/navigation';
 
 const navItems = [
   { href: '/', label: '首頁' },
-  { href: '/browse', label: '自然發音字卡' },
-  { href: '/sight-words', label: '重要單字卡' },
-  { href: '/print', label: '列印' },
-  { href: '/progress', label: '進度' },
-  { href: '/quiz', label: '測驗' },
+  {
+    href: '/english',
+    label: 'English',
+    icon: '🔤',
+    extraMatch: ['/browse', '/sight-words', '/print', '/progress', '/quiz'],
+  },
+  { href: '/math', label: 'Math', icon: '🧮' },
+  { href: '/games', label: 'Game', icon: '🎮' },
 ];
 
 export default function NavBar() {
@@ -21,7 +24,10 @@ export default function NavBar() {
         <span className="mr-4 text-xl font-bold text-[var(--hero-gold)]">💥 英雄學習平台</span>
         <div className="flex flex-wrap gap-1">
           {navItems.map((item) => {
-            const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+            const isActive =
+              item.href === '/'
+                ? pathname === '/'
+                : pathname.startsWith(item.href) || (item.extraMatch?.some((p) => pathname.startsWith(p)) ?? false);
             return (
               <Link
                 key={item.href}
@@ -32,6 +38,7 @@ export default function NavBar() {
                     : 'text-white hover:bg-white/20 hover:text-[var(--hero-gold)]'
                 }`}
               >
+                {item.icon && <span className="mr-1">{item.icon}</span>}
                 {item.label}
               </Link>
             );

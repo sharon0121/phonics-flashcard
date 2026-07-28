@@ -1,92 +1,71 @@
-'use client';
-
+import Image from 'next/image';
 import Link from 'next/link';
-import { phases, getWordsByPhase } from '@/data/words';
-import { sightWords } from '@/data/sightWords';
-import { useProgress } from '@/lib/progress';
-import type { ProgressMap, Word } from '@/lib/types';
 
-const ACCENTS = ['var(--hero-red)', 'var(--hero-blue)', 'var(--hero-gold)'];
-
-function completionOf(wordsInGroup: Word[], progress: ProgressMap) {
-  if (wordsInGroup.length === 0) return { percent: 0, total: 0 };
-  let points = 0;
-  for (const w of wordsInGroup) {
-    const entry = progress[w.id];
-    if (entry?.canPronounce) points += 1;
-    if (entry?.canUnderstand) points += 1;
-  }
-  const percent = Math.round((points / (wordsInGroup.length * 2)) * 100);
-  return { percent, total: wordsInGroup.length };
-}
-
-function phaseCompletion(phase: number, progress: ProgressMap) {
-  return completionOf(getWordsByPhase(phase), progress);
-}
+const categories = [
+  {
+    href: '/english',
+    image: '/heroes/hero-english.png',
+    imgWidth: 500,
+    imgHeight: 866,
+    title: '英文學習',
+    description: '自然發音字卡、重要單字卡、列印、進度、測驗',
+    accent: 'var(--hero-red)',
+    ready: true,
+  },
+  {
+    href: '/math',
+    image: '/heroes/hero-math.png',
+    imgWidth: 500,
+    imgHeight: 646,
+    title: '數學珠心算',
+    description: '珠算、心算練習與測驗',
+    accent: 'var(--hero-blue)',
+    ready: true,
+  },
+  {
+    href: '/games',
+    image: '/heroes/hero-game.png',
+    imgWidth: 417,
+    imgHeight: 485,
+    title: '小遊戲',
+    description: '各種學習小遊戲，陸續開發中',
+    accent: 'var(--hero-gold)',
+    ready: false,
+  },
+];
 
 export default function Home() {
-  const progress = useProgress();
-  const sightWordsCompletion = completionOf(sightWords, progress);
-
   return (
-    <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
+    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
       <h1 className="text-3xl font-bold text-[var(--hero-gold)]">英雄學習平台</h1>
-      <p className="mt-2 text-sm text-zinc-300">選一個階段開始瀏覽、朗讀、練習吧！</p>
+      <p className="mt-2 text-sm text-zinc-300">選一個分類開始學習吧！</p>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {phases.map((p, i) => {
-          const { percent, total } = phaseCompletion(p.phase, progress);
-          const disabled = total === 0;
-          const accent = ACCENTS[i % ACCENTS.length];
-          return (
-            <Link
-              key={p.phase}
-              href={disabled ? '#' : `/browse?phase=${p.phase}`}
-              aria-disabled={disabled}
-              style={{ borderColor: accent }}
-              className={`rounded-2xl border-[3px] bg-white p-5 shadow-md transition-transform ${
-                disabled ? 'pointer-events-none opacity-50' : 'hover:-translate-y-0.5 hover:rotate-[0.5deg] hover:shadow-xl'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-zinc-900">{p.phaseLabel}</h2>
-                <span className="text-xs text-zinc-400">
-                  {disabled ? '尚未建立' : `${total} 字`}
-                </span>
-              </div>
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-100">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${percent}%`, backgroundColor: accent }}
-                />
-              </div>
-              <div className="mt-1 text-right text-xs text-zinc-400">{percent}%</div>
-            </Link>
-          );
-        })}
+      <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
+        {categories.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            style={{ borderColor: c.accent }}
+            className="flex flex-col items-center rounded-2xl border-[3px] bg-white p-6 text-center shadow-md transition-transform hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-xl"
+          >
+            <Image
+              src={c.image}
+              alt={`${c.title}小英雄`}
+              width={c.imgWidth}
+              height={c.imgHeight}
+              className="h-64 w-auto rounded-2xl border-4 object-contain shadow-md"
+              style={{ borderColor: c.accent }}
+            />
+            <h2 className="mt-4 text-2xl font-bold text-zinc-900">{c.title}</h2>
+            <p className="mt-2 text-sm text-zinc-500">{c.description}</p>
+            {!c.ready && (
+              <span className="mt-3 rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-500">
+                敬請期待
+              </span>
+            )}
+          </Link>
+        ))}
       </div>
-
-      <h2 className="mt-10 text-2xl font-bold text-[var(--hero-gold)]">重要單字卡</h2>
-      <p className="mt-1 text-sm text-zinc-300">
-        從拼音跨越到流利閱讀的關鍵一步：看到就直接認出來的高頻字。
-      </p>
-      <Link
-        href="/sight-words"
-        style={{ borderColor: 'var(--hero-blue)' }}
-        className="mt-4 block rounded-2xl border-[3px] bg-white p-5 shadow-md transition-transform hover:-translate-y-0.5 hover:rotate-[0.5deg] hover:shadow-xl sm:max-w-sm"
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-zinc-900">重要單字卡</h3>
-          <span className="text-xs text-zinc-400">{sightWordsCompletion.total} 字</span>
-        </div>
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-100">
-          <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${sightWordsCompletion.percent}%`, backgroundColor: 'var(--hero-blue)' }}
-          />
-        </div>
-        <div className="mt-1 text-right text-xs text-zinc-400">{sightWordsCompletion.percent}%</div>
-      </Link>
     </main>
   );
 }

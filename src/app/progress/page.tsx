@@ -19,6 +19,7 @@ import {
   getTaughtWordIds,
 } from '@/lib/curriculum';
 import type { ProgressMap, Word } from '@/lib/types';
+import EnglishSubNav from '@/components/EnglishSubNav';
 
 const WEEKLY_TARGET = 10;
 
@@ -107,6 +108,7 @@ export default function ProgressPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
+      <EnglishSubNav />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--hero-gold)]">學習進度</h1>
         <button
@@ -216,7 +218,7 @@ export default function ProgressPage() {
         </div>
 
         <p className="mt-3 text-center text-sm text-zinc-500">
-          目標每週 {WEEKLY_TARGET} 個單字・已選 {planWeekIds.length} / {WEEKLY_TARGET}
+          建議每週至少 {WEEKLY_TARGET} 個單字・已選 {planWeekIds.length} 個
           {planWeekIds.length > 0 && `・已學會 ${planWeekStats.learned} / ${planWeekIds.length}`}
         </p>
         <ProgressBar percent={Math.min(100, Math.round((planWeekIds.length / WEEKLY_TARGET) * 100))} />

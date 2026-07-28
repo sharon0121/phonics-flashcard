@@ -150,3 +150,18 @@ export function getTaughtWordIds(curriculum: CurriculumMap, uptoWeekKey: string)
   }
   return ids;
 }
+
+// All word ids assigned in weeks within [fromWeekKey, toWeekKey], inclusive.
+export function getWordIdsInWeekRange(
+  curriculum: CurriculumMap,
+  fromWeekKey: string,
+  toWeekKey: string
+): Set<string> {
+  const ids = new Set<string>();
+  for (const [weekKey, wordIds] of Object.entries(curriculum)) {
+    if (weekKey >= fromWeekKey && weekKey <= toWeekKey) {
+      for (const id of wordIds) ids.add(id);
+    }
+  }
+  return ids;
+}

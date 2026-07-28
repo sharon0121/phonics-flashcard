@@ -10,6 +10,7 @@ interface FlashCardProps {
   word: Word;
   canPronounce?: boolean;
   canUnderstand?: boolean;
+  isThisWeek?: boolean;
   onToggleProgress?: (field: 'canPronounce' | 'canUnderstand') => void;
 }
 
@@ -17,9 +18,11 @@ export default function FlashCard({
   word,
   canPronounce = false,
   canUnderstand = false,
+  isThisWeek = false,
   onToggleProgress,
 }: FlashCardProps) {
   const [flipped, setFlipped] = useState(false);
+  const starCount = (canPronounce ? 1 : 0) + (canUnderstand ? 3 : 0);
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -33,8 +36,20 @@ export default function FlashCard({
             setFlipped((f) => !f);
           }
         }}
-        className="relative flex h-72 w-48 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-[3px] border-zinc-900 bg-white p-4 text-center text-zinc-900 shadow-[4px_4px_0_var(--hero-blue)] transition-transform hover:-translate-y-0.5 hover:rotate-[0.5deg] hover:shadow-[6px_6px_0_var(--hero-red)]"
+        className={`relative flex h-72 w-48 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl bg-white p-4 text-center text-zinc-900 shadow-[4px_4px_0_var(--hero-blue)] transition-transform hover:-translate-y-0.5 hover:rotate-[0.5deg] hover:shadow-[6px_6px_0_var(--hero-red)] ${
+          isThisWeek ? 'border-[4px] border-[var(--hero-gold)]' : 'border-[3px] border-zinc-900'
+        }`}
       >
+        {starCount > 0 && (
+          <span className="absolute top-2 left-2 rounded-full bg-white/90 px-1.5 py-0.5 text-xs shadow">
+            {'⭐'.repeat(starCount)}
+          </span>
+        )}
+        {isThisWeek && (
+          <span className="absolute top-2 right-2 rounded-full bg-[var(--hero-gold)] px-2 py-0.5 text-[10px] font-bold text-zinc-900 shadow">
+            本週
+          </span>
+        )}
         {!flipped ? (
           <>
             <div className="text-2xl font-bold">
