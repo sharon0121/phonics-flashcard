@@ -19,6 +19,7 @@ import type { MazeWord } from '@/data/wordMazeWords';
 import { playCollectSound, playPortalSound, playErrorSound } from '@/lib/sound';
 import PacmanSprite from '@/components/PacmanSprite';
 import GhostSprite, { type GhostColorKey } from '@/components/GhostSprite';
+import { useMazeCellSize } from './useMazeCellSize';
 
 const START_LIVES = 3;
 const MOVE_REPEAT_MS = 150;
@@ -247,13 +248,17 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
     portalNotified.current = false;
   }
 
-  const cellPx = 26;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mazeFrameRef = useRef<HTMLDivElement>(null);
+  const dpadBlockRef = useRef<HTMLDivElement>(null);
+  const cellPx = useMazeCellSize({ mazeFrameRef, dpadBlockRef, containerRef });
+
   const dirButtonClass =
-    'flex items-center justify-center rounded-2xl bg-white text-3xl text-zinc-900 shadow-lg transition-colors hover:bg-zinc-100 active:bg-zinc-200 select-none';
+    'flex items-center justify-center rounded-2xl bg-white text-zinc-900 shadow-lg transition-colors hover:bg-zinc-100 active:bg-zinc-200 select-none';
 
   return (
     <div className="flex flex-col items-center">
-      <div className="mb-3 flex w-full max-w-md items-center justify-between text-sm font-bold text-[var(--hero-gold)]">
+      <div className="mb-1 flex w-full max-w-md items-center justify-between text-xs font-bold text-[var(--hero-gold)] sm:mb-3 sm:text-sm">
         <span>
           {'❤️'.repeat(Math.max(lives, 0))}
           {'🖤'.repeat(Math.max(START_LIVES - lives, 0))}
@@ -263,8 +268,11 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
         </span>
       </div>
 
-      <div className="flex flex-wrap items-start justify-center gap-6">
-      <div className="maze-frame relative rounded-xl border-4 border-cyan-400 bg-gradient-to-br from-[#0a0118] via-[#12042a] to-[#01030f] p-1 shadow-lg">
+      <div ref={containerRef} className="flex w-full flex-wrap items-start justify-center gap-3 sm:gap-6">
+      <div
+        ref={mazeFrameRef}
+        className="maze-frame relative rounded-xl border-4 border-cyan-400 bg-gradient-to-br from-[#0a0118] via-[#12042a] to-[#01030f] p-1 shadow-lg"
+      >
         <div className="relative" style={{ width: MAZE_COLS * cellPx, height: MAZE_ROWS * cellPx }}>
           <div
             className="absolute inset-0 grid gap-0"
@@ -378,19 +386,19 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
         )}
       </div>
 
-      <div className="flex flex-col items-center gap-4">
-        <div className="flex flex-wrap justify-center gap-2">
+      <div ref={dpadBlockRef} className="flex flex-col items-center gap-2 sm:gap-4">
+        <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
           {word.word.split('').map((_, i) => (
             <span
               key={i}
-              className="flex h-8 w-8 items-center justify-center rounded-md border-2 border-[var(--hero-gold)] bg-white/90 text-sm font-extrabold text-zinc-900"
+              className="flex h-6 w-6 items-center justify-center rounded-md border-2 border-[var(--hero-gold)] bg-white/90 text-xs font-extrabold text-zinc-900 sm:h-8 sm:w-8 sm:text-sm"
             >
               {collected[i] ?? ''}
             </span>
           ))}
         </div>
 
-        <div className="grid w-56 grid-cols-3 grid-rows-3 gap-3" style={{ touchAction: 'none' }}>
+        <div className="grid w-44 grid-cols-3 grid-rows-3 gap-1.5 sm:w-56 sm:gap-3" style={{ touchAction: 'none' }}>
           <div />
           <button
             type="button"
@@ -398,7 +406,7 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-16`}
+            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
           >
             ⬆️
           </button>
@@ -409,7 +417,7 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-16`}
+            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
           >
             ⬅️
           </button>
@@ -420,7 +428,7 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-16`}
+            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
           >
             ➡️
           </button>
@@ -431,7 +439,7 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-16`}
+            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
           >
             ⬇️
           </button>
