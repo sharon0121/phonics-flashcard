@@ -83,7 +83,7 @@ function generateProblem(rows: number, maxValue: number): AbacusProblem {
 
     let doSubtract: boolean;
     if (subCandidates.length > 0 && addCandidates.length > 0) {
-      doSubtract = Math.random() < 0.45;
+      doSubtract = Math.random() < 0.30;
     } else if (subCandidates.length > 0) {
       doSubtract = true;
     } else if (addCandidates.length > 0) {
@@ -91,7 +91,7 @@ function generateProblem(rows: number, maxValue: number): AbacusProblem {
     } else {
       // Both starved while excluding prevValue — extremely rare; fall back
       // to allowing a repeat rather than failing to generate a term.
-      doSubtract = total >= 1 && Math.random() < 0.45;
+      doSubtract = total >= 1 && Math.random() < 0.30;
     }
 
     if (doSubtract) {
