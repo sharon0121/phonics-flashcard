@@ -44,6 +44,9 @@ function pickFrom(pool: number[]): number {
 }
 
 function generateProblem(rows: number, maxValue: number): AbacusProblem {
+  // Each problem picks its own subtraction probability (20%–45%), so the
+  // answer distribution is spread across a wide range rather than clustering.
+  const subProb = 0.20 + Math.random() * 0.25;
   const terms: number[] = [];
   let total = 0;
   const valueCounts = new Map<number, number>();
@@ -83,7 +86,7 @@ function generateProblem(rows: number, maxValue: number): AbacusProblem {
 
     let doSubtract: boolean;
     if (subCandidates.length > 0 && addCandidates.length > 0) {
-      doSubtract = Math.random() < 0.30;
+      doSubtract = Math.random() < subProb;
     } else if (subCandidates.length > 0) {
       doSubtract = true;
     } else if (addCandidates.length > 0) {
