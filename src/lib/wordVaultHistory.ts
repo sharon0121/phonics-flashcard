@@ -10,6 +10,7 @@ export interface CompletionRecord {
 
 const STORAGE_KEY = 'word_vault_completions';
 const EMPTY: CompletionRecord[] = [];
+const MAX_UNIQUE_WORDS = 50;
 
 const listeners = new Set<() => void>();
 let cachedRaw: string | null = null;
@@ -48,7 +49,27 @@ export function recordWordCompletion(word: string, zh: string, emoji: string, st
   if (typeof window === 'undefined') return;
   const fresh = readStorage();
   const entry: CompletionRecord = { word, zh, emoji, stars, timestamp };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...fresh, entry]));
+  let updated = [...fresh, entry];
+
+  // Enforce 50-unique-word cap: find the best record per word, evict the
+  // oldest unique word(s) when the total exceeds the cap.
+  const bestByWord = new Map<string, CompletionRecord>();
+  for (const rec of updated) {
+    const existing = bestByWord.get(rec.word);
+    if (!existing || rec.stars > existing.stars || (rec.stars === existing.stars && rec.timestamp > existing.timestamp)) {
+      bestByWord.set(rec.word, rec);
+    }
+  }
+  if (bestByWord.size > MAX_UNIQUE_WORDS) {
+    const oldest = Array.from(bestByWord.values())
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(0, bestByWord.size - MAX_UNIQUE_WORDS)
+      .map((r) => r.word);
+    const evict = new Set(oldest);
+    updated = updated.filter((r) => !evict.has(r.word));
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   notify();
 }
 

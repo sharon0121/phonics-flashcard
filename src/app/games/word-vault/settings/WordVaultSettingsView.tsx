@@ -10,6 +10,8 @@ import {
   useGhostSpeed,
   useWordSource,
   useThisWeekMazeWords,
+  useLearnedMazeWords,
+  useTunnelMode,
   addCustomMazeWord,
   removeCustomMazeWord,
   toggleBuiltinMazeWord,
@@ -17,6 +19,7 @@ import {
   setGhostCount,
   setGhostSpeed,
   setWordSource,
+  setTunnelMode,
   MIN_GHOST_COUNT,
   MAX_GHOST_COUNT,
   type GhostSpeed,
@@ -41,6 +44,8 @@ export default function WordVaultSettingsView() {
   const ghostSpeed = useGhostSpeed();
   const wordSource = useWordSource();
   const weekWords = useThisWeekMazeWords();
+  const learnedWords = useLearnedMazeWords();
+  const tunnelMode = useTunnelMode();
   const bestCompletions = useBestCompletions();
 
   const [word, setWord] = useState('');
@@ -151,14 +156,12 @@ export default function WordVaultSettingsView() {
 
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
         <h2 className="text-sm font-bold text-zinc-900">📚 單字來源</h2>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button
             type="button"
             onClick={() => setWordSource('builtin')}
             className={`rounded-lg px-4 py-2 text-sm font-bold ${
-              wordSource === 'builtin' || weekWords.length === 0
-                ? 'bg-[var(--hero-gold)] text-zinc-900'
-                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+              wordSource === 'builtin' ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
             }`}
           >
             標準題庫
@@ -173,13 +176,58 @@ export default function WordVaultSettingsView() {
                 : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
             }`}
           >
-            本週學習單字（{weekWords.length} 個可用）
+            本週學習單字（{weekWords.length} 個）
+          </button>
+          <button
+            type="button"
+            onClick={() => learnedWords.length > 0 && setWordSource('learned')}
+            disabled={learnedWords.length === 0}
+            className={`rounded-lg px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${
+              wordSource === 'learned' && learnedWords.length > 0
+                ? 'bg-[var(--hero-gold)] text-zinc-900'
+                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+            }`}
+          >
+            已學會單字（{learnedWords.length} 個）
           </button>
         </div>
         <p className="mt-2 text-xs text-zinc-500">
-          {weekWords.length === 0
-            ? '本週還沒有指定學習單字，暫時無法使用這個模式。'
-            : '選這個模式時，遊戲只會出本週正在學習的單字，幫助複習。'}
+          {wordSource === 'learned'
+            ? learnedWords.length === 0
+              ? '還沒有標記為「知道意思 🌟」的單字，請先在字卡區練習。'
+              : '使用字卡區已標記「知道意思 🌟」的單字，複習已掌握的詞彙。'
+            : wordSource === 'week'
+              ? weekWords.length === 0
+                ? '本週還沒有指定學習單字。'
+                : '只出本週正在學習的單字，幫助複習。'
+              : '使用標準題庫，由設定控制哪些單字啟用。'}
+        </p>
+      </div>
+
+      <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
+        <h2 className="text-sm font-bold text-zinc-900">🌀 穿透模式</h2>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTunnelMode(false)}
+            className={`rounded-lg px-4 py-2 text-sm font-bold ${
+              !tunnelMode ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+            }`}
+          >
+            一般版
+          </button>
+          <button
+            type="button"
+            onClick={() => setTunnelMode(true)}
+            className={`rounded-lg px-4 py-2 text-sm font-bold ${
+              tunnelMode ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+            }`}
+          >
+            穿透版
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          穿透版：小精靈撞到外牆會從對面穿出，可以快速逃離幽靈！
         </p>
       </div>
 

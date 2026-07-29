@@ -8,9 +8,10 @@ const DISABLED_KEY = 'disabled_maze_word_ids';
 const GHOST_COUNT_KEY = 'maze_ghost_count';
 const GHOST_SPEED_KEY = 'maze_ghost_speed';
 const WORD_SOURCE_KEY = 'maze_word_source';
+const TUNNEL_KEY = 'maze_tunnel_mode';
 
 export type GhostSpeed = 'slow' | 'normal' | 'fast';
-export type WordSource = 'builtin' | 'week';
+export type WordSource = 'builtin' | 'week' | 'learned';
 
 const GHOST_SPEED_MS: Record<GhostSpeed, number> = { slow: 700, normal: 500, fast: 350 };
 
@@ -33,6 +34,8 @@ let cachedSpeedRaw: string | null = null;
 let cachedGhostSpeed: GhostSpeed = DEFAULT_GHOST_SPEED;
 let cachedSourceRaw: string | null = null;
 let cachedWordSource: WordSource = DEFAULT_WORD_SOURCE;
+let cachedTunnelRaw: string | null = null;
+let cachedTunnelMode = false;
 
 function readCustom(): MazeWord[] {
   const raw = localStorage.getItem(CUSTOM_KEY);
@@ -80,8 +83,30 @@ function readWordSource(): WordSource {
   const raw = localStorage.getItem(WORD_SOURCE_KEY);
   if (raw === cachedSourceRaw) return cachedWordSource;
   cachedSourceRaw = raw;
-  cachedWordSource = raw === 'builtin' || raw === 'week' ? raw : DEFAULT_WORD_SOURCE;
+  cachedWordSource = raw === 'builtin' || raw === 'week' || raw === 'learned' ? raw : DEFAULT_WORD_SOURCE;
   return cachedWordSource;
+}
+
+function readTunnelMode(): boolean {
+  const raw = localStorage.getItem(TUNNEL_KEY);
+  if (raw === cachedTunnelRaw) return cachedTunnelMode;
+  cachedTunnelRaw = raw;
+  cachedTunnelMode = raw === 'true';
+  return cachedTunnelMode;
+}
+
+function readLearnedMazeWords(): MazeWord[] {
+  const raw = localStorage.getItem('phonics_progress');
+  if (!raw) return EMPTY_WORDS;
+  try {
+    const progress = JSON.parse(raw) as Record<string, { canUnderstand?: boolean }>;
+    const result = PHONICS_WORDS
+      .filter((w) => w.word.length >= 3 && w.word.length <= 8 && progress[w.id]?.canUnderstand === true)
+      .map((w) => ({ word: w.word.toUpperCase(), zh: w.zh, emoji: w.emoji }));
+    return result.length > 0 ? result : EMPTY_WORDS;
+  } catch {
+    return EMPTY_WORDS;
+  }
 }
 
 function subscribe(callback: () => void): () => void {
@@ -119,6 +144,14 @@ export function useGhostTickMs(): number {
 
 export function useWordSource(): WordSource {
   return useSyncExternalStore(subscribe, readWordSource, () => DEFAULT_WORD_SOURCE);
+}
+
+export function useTunnelMode(): boolean {
+  return useSyncExternalStore(subscribe, readTunnelMode, () => false);
+}
+
+export function useLearnedMazeWords(): MazeWord[] {
+  return useSyncExternalStore(subscribe, readLearnedMazeWords, () => EMPTY_WORDS);
 }
 
 // This week's curriculum words (from the phonics word bank), reshaped for
@@ -163,6 +196,12 @@ export function setGhostSpeed(speed: GhostSpeed): void {
 export function setWordSource(source: WordSource): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(WORD_SOURCE_KEY, source);
+  notify();
+}
+
+export function setTunnelMode(on: boolean): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(TUNNEL_KEY, String(on));
   notify();
 }
 
@@ -211,10 +250,10 @@ export function useAllMazeWords(): MazeWord[] {
   const custom = useCustomMazeWords();
   const disabled = useDisabledMazeWordIds();
   const weekWords = useThisWeekMazeWords();
+  const learnedWords = useLearnedMazeWords();
 
-  if (source === 'week' && weekWords.length > 0) {
-    return weekWords;
-  }
+  if (source === 'week' && weekWords.length > 0) return weekWords;
+  if (source === 'learned' && learnedWords.length > 0) return learnedWords;
 
   const activeBuiltin =
     disabled.length === 0 ? MAZE_WORDS : MAZE_WORDS.filter((w) => !disabled.includes(w.word));

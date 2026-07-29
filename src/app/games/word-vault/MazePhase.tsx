@@ -13,6 +13,7 @@ import {
   cellKey,
   placeLetters,
   ghostStep,
+  tunnelExitFor,
   type GridPos,
 } from '@/lib/wordMaze';
 import type { MazeWord } from '@/data/wordMazeWords';
@@ -46,13 +47,14 @@ interface MazePhaseProps {
   ghostCount: number;
   ghostTickMs: number;
   onComplete: () => void;
+  tunnelMode?: boolean;
 }
 
 function makeGhosts(count: number): GhostState[] {
   return GHOST_STARTS.slice(0, count).map((pos) => ({ pos, dir: null }));
 }
 
-export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }: MazePhaseProps) {
+export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete, tunnelMode = false }: MazePhaseProps) {
   const [player, setPlayer] = useState<GridPos>(PLAYER_START);
   const [playerDir, setPlayerDir] = useState<Direction>('right');
   const [ghosts, setGhosts] = useState<GhostState[]>(() => makeGhosts(ghostCount));
@@ -139,11 +141,17 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
         const [dr, dc] = deltas[dir];
         const nextRow = prev.row + dr;
         const nextCol = prev.col + dc;
-        if (!isWalkableForPlayer(nextRow, nextCol, portalOpen)) return prev;
+        if (!isWalkableForPlayer(nextRow, nextCol, portalOpen)) {
+          if (tunnelMode) {
+            const exit = tunnelExitFor(nextRow, nextCol, dr, dc);
+            if (exit && isWalkableForPlayer(exit.row, exit.col, portalOpen)) return exit;
+          }
+          return prev;
+        }
         return { row: nextRow, col: nextCol };
       });
     },
-    [caught, lost, portalOpen],
+    [caught, lost, portalOpen, tunnelMode],
   );
 
   const lastProcessedKey = useRef<string | null>(null);
@@ -406,9 +414,9 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
+            className={`${dirButtonClass} h-12 flex-col text-xl sm:h-16 sm:text-2xl`}
           >
-            ⬆️
+            <span>⬆️</span><span className="text-[10px] font-bold">Up</span>
           </button>
           <div />
           <button
@@ -439,9 +447,9 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete }:
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
+            className={`${dirButtonClass} h-12 flex-col text-xl sm:h-16 sm:text-2xl`}
           >
-            ⬇️
+            <span>⬇️</span><span className="text-[10px] font-bold">Down</span>
           </button>
           <div />
         </div>

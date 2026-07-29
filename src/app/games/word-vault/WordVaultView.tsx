@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import type { MazeWord } from '@/data/wordMazeWords';
-import { useAllMazeWords, useGhostCount, useGhostTickMs } from '@/lib/wordVaultSettings';
+import { useAllMazeWords, useGhostCount, useGhostTickMs, useTunnelMode } from '@/lib/wordVaultSettings';
 import HeroMascot from '@/components/HeroMascot';
 import MazePhase from './MazePhase';
 import PuzzlePhase from './PuzzlePhase';
@@ -11,15 +11,43 @@ import AchievementSidebar from './AchievementSidebar';
 
 type Stage = 'maze' | 'puzzle';
 
-function pickRandomWord(pool: MazeWord[]): MazeWord {
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
 export default function WordVaultView() {
   const allWords = useAllMazeWords();
   const ghostCount = useGhostCount();
   const ghostTickMs = useGhostTickMs();
-  const [word, setWord] = useState<MazeWord>(() => pickRandomWord(allWords));
+  const tunnelMode = useTunnelMode();
+
+  // Track which words have been shown so no word repeats until the whole pool
+  // has been exhausted. When the pool changes (settings edit), reset the tracker.
+  const usedWordsRef = useRef(new Set<string>());
+  const lastPoolRef = useRef(allWords);
+
+  function pickNext(currentWordStr?: string): MazeWord {
+    const pool = allWords;
+    if (pool !== lastPoolRef.current) {
+      lastPoolRef.current = pool;
+      usedWordsRef.current = new Set();
+    }
+    let available = pool.filter((w) => !usedWordsRef.current.has(w.word));
+    if (available.length === 0) {
+      // Full rotation done — start fresh, just skip the word we just played
+      usedWordsRef.current = new Set();
+      available = currentWordStr ? pool.filter((w) => w.word !== currentWordStr) : pool;
+      if (available.length === 0) available = pool;
+    } else if (currentWordStr && available.length > 1) {
+      const noRepeat = available.filter((w) => w.word !== currentWordStr);
+      if (noRepeat.length > 0) available = noRepeat;
+    }
+    const picked = available[Math.floor(Math.random() * available.length)];
+    usedWordsRef.current.add(picked.word);
+    return picked;
+  }
+
+  const [word, setWord] = useState<MazeWord>(() => {
+    const initial = allWords[Math.floor(Math.random() * allWords.length)];
+    usedWordsRef.current.add(initial.word);
+    return initial;
+  });
   const [stage, setStage] = useState<Stage>('maze');
 
   function replaySame() {
@@ -27,7 +55,7 @@ export default function WordVaultView() {
   }
 
   function nextWord() {
-    setWord(pickRandomWord(allWords));
+    setWord(pickNext(word.word));
     setStage('maze');
   }
 
@@ -71,6 +99,7 @@ export default function WordVaultView() {
                 word={word}
                 ghostCount={ghostCount}
                 ghostTickMs={ghostTickMs}
+                tunnelMode={tunnelMode}
                 onComplete={() => setStage('puzzle')}
               />
             ) : (

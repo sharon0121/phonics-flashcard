@@ -3,13 +3,13 @@
 // letter is collected). Validated offline for full connectivity of '.' cells.
 export const MAZE_LAYOUT: string[] = [
   '###############',
-  '#......#......#',
+  '#.............#',
   '#.###.#.#.###.#',
   '#.............#',
   '#.##.#####.##.#',
   '#.............#',
   '###.##.#.##.###',
-  '  #.##.#.##.#  ',
+  '  #.#..#..#.#  ',
   '###.#.HHH.#.###',
   '  #.#.HHH.#.#  ',
   '###.#..D..#.###',
@@ -17,7 +17,7 @@ export const MAZE_LAYOUT: string[] = [
   '#.##.#####.##.#',
   '#.....#.......#',
   '#.###.#.###.#.#',
-  '#......#......#',
+  '#.............#',
   '###############',
 ];
 
@@ -124,6 +124,21 @@ const REVERSE_OF: Record<Direction, Direction> = {
   left: 'right',
   right: 'left',
 };
+
+// In tunnel mode, when a player move lands on a boundary wall, return the
+// matching exit cell on the opposite edge of the same row/column.
+export function tunnelExitFor(row: number, col: number, dr: number, dc: number): GridPos | null {
+  if (dc === -1 && col === 0) {
+    for (let c = MAZE_COLS - 1; c >= 0; c--) if (cellTypeAt(row, c) === 'path') return { row, col: c };
+  } else if (dc === 1 && col === MAZE_COLS - 1) {
+    for (let c = 0; c < MAZE_COLS; c++) if (cellTypeAt(row, c) === 'path') return { row, col: c };
+  } else if (dr === -1 && row === 0) {
+    for (let r = MAZE_ROWS - 1; r >= 0; r--) if (cellTypeAt(r, col) === 'path') return { row: r, col };
+  } else if (dr === 1 && row === MAZE_ROWS - 1) {
+    for (let r = 0; r < MAZE_ROWS; r++) if (cellTypeAt(r, col) === 'path') return { row: r, col };
+  }
+  return null;
+}
 
 // Gentle random-walk ghost AI: picks a random open neighbor, avoiding an
 // immediate U-turn unless it's the only option (dead end). Passing `target`
