@@ -297,7 +297,7 @@ export default function CoordinateHuntView() {
                   onClick={() => move('north')}
                   className={`${dirButtonClass} h-12 flex-col`}
                 >
-                  <span className="text-lg">⬆️</span>Up
+                  <span className="text-lg">⬆️</span><span className="text-[10px] font-bold">Up</span>
                 </button>
                 <div />
                 <button
@@ -306,7 +306,7 @@ export default function CoordinateHuntView() {
                   onClick={() => move('left')}
                   className={`${dirButtonClass} h-12 flex-col`}
                 >
-                  <span className="text-lg">⬅️</span>Left
+                  <span className="text-lg">⬅️</span><span className="text-[10px] font-bold">Left</span>
                 </button>
                 <div />
                 <button
@@ -315,7 +315,7 @@ export default function CoordinateHuntView() {
                   onClick={() => move('right')}
                   className={`${dirButtonClass} h-12 flex-col`}
                 >
-                  <span className="text-lg">➡️</span>Right
+                  <span className="text-lg">➡️</span><span className="text-[10px] font-bold">Right</span>
                 </button>
                 <div />
                 <button
@@ -324,7 +324,7 @@ export default function CoordinateHuntView() {
                   onClick={() => move('south')}
                   className={`${dirButtonClass} h-12 flex-col`}
                 >
-                  <span className="text-lg">⬇️</span>Down
+                  <span className="text-lg">⬇️</span><span className="text-[10px] font-bold">Down</span>
                 </button>
                 <div />
               </div>

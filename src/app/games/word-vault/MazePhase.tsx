@@ -425,9 +425,9 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete, t
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
+            className={`${dirButtonClass} h-12 flex-col text-xl sm:h-16 sm:text-2xl`}
           >
-            ⬅️
+            <span>⬅️</span><span className="text-[10px] font-bold">Left</span>
           </button>
           <div />
           <button
@@ -436,9 +436,9 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete, t
             onPointerUp={stopHold}
             onPointerLeave={stopHold}
             onPointerCancel={stopHold}
-            className={`${dirButtonClass} h-12 text-2xl sm:h-16 sm:text-3xl`}
+            className={`${dirButtonClass} h-12 flex-col text-xl sm:h-16 sm:text-2xl`}
           >
-            ➡️
+            <span>➡️</span><span className="text-[10px] font-bold">Right</span>
           </button>
           <div />
           <button
