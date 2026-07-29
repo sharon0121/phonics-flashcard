@@ -19,6 +19,7 @@ export interface ProgressEntry {
   canPronounce: boolean;
   canUnderstand: boolean;
   learnedDate: string;
+  needsReinforcement?: boolean;
 }
 
 export type ProgressMap = Record<string, ProgressEntry>;

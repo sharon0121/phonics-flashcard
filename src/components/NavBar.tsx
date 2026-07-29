@@ -9,7 +9,7 @@ const navItems = [
     href: '/english',
     label: 'English',
     icon: '🔤',
-    extraMatch: ['/browse', '/sight-words', '/print', '/progress', '/quiz'],
+    extraMatch: ['/browse', '/sight-words', '/print', '/progress', '/quiz', '/custom-words'],
   },
   { href: '/math', label: 'Math', icon: '🧮' },
   { href: '/games', label: 'Game', icon: '🎮' },

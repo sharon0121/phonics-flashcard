@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { getWordById } from '@/data/words';
-import { getSightWordById } from '@/data/sightWords';
+import { getWordById, words as allPhonicsWords } from '@/data/words';
+import { getSightWordById, sightWords as allSightWords } from '@/data/sightWords';
+import { useCustomWords, getCustomWordById } from '@/lib/customWords';
 import {
   useCurriculum,
   getCurrentWeekKey,
@@ -11,14 +12,16 @@ import {
   getWordIdsInWeekRange,
   shiftWeekKey,
 } from '@/lib/curriculum';
+import { useProgress } from '@/lib/progress';
 import type { Word } from '@/lib/types';
 import WordHighlight from '@/components/WordHighlight';
 import ZhuyinText from '@/components/ZhuyinText';
 import EnglishSubNav from '@/components/EnglishSubNav';
+import BackButton from '@/components/BackButton';
 
 type QuizMode = 'emoji-to-word' | 'word-to-emoji';
 type Question = { answer: Word; options: Word[] };
-type TimeScope = 'week' | 'recent4' | 'all';
+type TimeScope = 'week' | 'recent4' | 'all' | 'reinforce';
 type Difficulty = 'all' | 'easy' | 'medium' | 'hard';
 
 const TOTAL_QUESTIONS = 10;
@@ -28,6 +31,7 @@ const TIME_SCOPE_OPTIONS: { value: TimeScope; label: string }[] = [
   { value: 'week', label: '當週' },
   { value: 'recent4', label: '最近 4 週' },
   { value: 'all', label: '所有已學過' },
+  { value: 'reinforce', label: '🔥 加強單字' },
 ];
 
 const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
@@ -46,7 +50,7 @@ const DIFFICULTY_PHASES: Record<Exclude<Difficulty, 'all'>, number[]> = {
 };
 
 function resolveWord(id: string): Word | undefined {
-  return getWordById(id) ?? getSightWordById(id);
+  return getWordById(id) ?? getSightWordById(id) ?? getCustomWordById(id);
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -71,11 +75,24 @@ function buildQuizSet(pool: Word[]): Question[] {
 
 export default function QuizView() {
   const curriculum = useCurriculum();
+  const progress = useProgress();
+  const customWords = useCustomWords();
   const [mode, setMode] = useState<QuizMode>('emoji-to-word');
   const [timeScope, setTimeScope] = useState<TimeScope>('all');
   const [difficulty, setDifficulty] = useState<Difficulty>('all');
 
   const pool = useMemo(() => {
+    if (timeScope === 'reinforce') {
+      const reinforce = [...allPhonicsWords, ...allSightWords, ...customWords].filter(
+        (w) => progress[w.id]?.needsReinforcement && !progress[w.id]?.canUnderstand,
+      );
+      if (difficulty !== 'all') {
+        const allowedPhases = DIFFICULTY_PHASES[difficulty];
+        return reinforce.filter((w) => allowedPhases.includes(w.phase));
+      }
+      return reinforce;
+    }
+
     const currentWeekKey = getCurrentWeekKey();
     let ids: Set<string>;
     if (timeScope === 'week') {
@@ -96,7 +113,7 @@ export default function QuizView() {
     }
 
     return resolved;
-  }, [curriculum, timeScope, difficulty]);
+  }, [curriculum, progress, timeScope, difficulty, customWords]);
 
   // Keys the quiz session by which words are actually in play, so changing
   // scope/difficulty (or the curriculum itself) starts a fresh session
@@ -117,7 +134,10 @@ export default function QuizView() {
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
       <EnglishSubNav />
-      <h1 className="text-2xl font-bold text-[var(--hero-gold)]">小測驗</h1>
+      <div className="mb-3 flex items-center gap-3">
+        <BackButton />
+        <h1 className="text-2xl font-bold text-[var(--hero-gold)]">小測驗</h1>
+      </div>
       <p className="mt-1 text-sm text-zinc-300">
         只考已經在「進度」頁面規劃過的單字，可依範圍與難度篩選。
       </p>

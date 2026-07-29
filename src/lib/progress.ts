@@ -96,3 +96,27 @@ export function updateWordProgressFresh(
   const fresh = loadProgress();
   saveProgress(updateWordProgress(fresh, wordId, field, value));
 }
+
+export function toggleReinforcementFresh(wordId: string): void {
+  const fresh = loadProgress();
+  const existing = fresh[wordId];
+  saveProgress({
+    ...fresh,
+    [wordId]: {
+      canPronounce: existing?.canPronounce ?? false,
+      canUnderstand: existing?.canUnderstand ?? false,
+      learnedDate: existing?.learnedDate ?? new Date().toISOString().slice(0, 10),
+      needsReinforcement: !existing?.needsReinforcement,
+    },
+  });
+}
+
+export function clearReinforcementFresh(wordId: string): void {
+  const fresh = loadProgress();
+  const existing = fresh[wordId];
+  if (!existing?.needsReinforcement) return;
+  saveProgress({
+    ...fresh,
+    [wordId]: { ...existing, needsReinforcement: false },
+  });
+}

@@ -10,7 +10,7 @@ interface PrintCardProps {
 }
 
 export default function PrintCard({ word, side, perPage, heightMm }: PrintCardProps) {
-  const compact = perPage >= 10;
+  const compact = perPage >= 8;
   const wordSize = compact ? 'text-xl' : perPage >= 6 ? 'text-2xl' : 'text-3xl';
   const kkSize = compact ? 'text-xs' : 'text-base';
   const enSize = compact ? 'text-[10px]' : 'text-sm';
