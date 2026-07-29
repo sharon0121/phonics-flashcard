@@ -1,22 +1,99 @@
 import Link from 'next/link';
 import HeroMascot from '@/components/HeroMascot';
 
+interface GameEntry {
+  href: string;
+  emoji: string;
+  iconSrc?: string;
+  title: string;
+  titleEn?: string;
+  description: string;
+  ready: boolean;
+}
+
+const games: GameEntry[] = [
+  {
+    href: '/games/coordinate-hunt',
+    emoji: '🗺️',
+    title: '座標寶藏迷宮',
+    titleEn: 'Coordinate Treasure Hunt',
+    description: '讀座標、認方位，挖寶找單字並拼出完整句子',
+    ready: true,
+  },
+  {
+    href: '/games/word-vault',
+    emoji: '👾',
+    iconSrc: '/sprites/pacman.png',
+    title: '小精靈大探險',
+    titleEn: 'Pac Word Adventure',
+    description: '迷宮吃字母躲幽靈，再拼出正確的單字',
+    ready: true,
+  },
+  { href: '', emoji: '🧩', title: '七巧板單字拼圖', description: '平面幾何、圖形旋轉、英文拼字', ready: false },
+  { href: '', emoji: '🔀', title: '滑塊華容道：字母解密', description: '空間規劃、位移邏輯、基礎加減法', ready: false },
+  { href: '', emoji: '🎯', title: '軸對稱鏡像射擊', description: '線對稱幾何概念、圖形對應', ready: false },
+  { href: '', emoji: '🧊', title: '3D 展開圖魔方', description: '3D 空間展開與摺疊、空間想像力', ready: false },
+  { href: '', emoji: '⚖️', title: '天平秤重拼單字', description: '等式與平衡概念、基礎數學計算', ready: false },
+  { href: '', emoji: '🚀', title: '邏輯數列太空賽車', description: '數字規律與邏輯、數感訓練', ready: false },
+  { href: '', emoji: '🍕', title: '分數披薩大廚', description: '分數概念、幾何分割、生活句型', ready: false },
+  { href: '', emoji: '👾', title: '維恩圖怪物分類', description: '邏輯集合、空間歸類、單字屬性分類', ready: false },
+  { href: '', emoji: '🧱', title: '牆洞大比拚（磚塊補補樂）', description: '面積守恆、單位換算、輔助線分割', ready: false },
+  { href: '', emoji: '🟩', title: '幾何積木拼圖大挑戰', description: '空間心智旋轉、圖形分解與組合', ready: false },
+];
+
 export default function GamesPage() {
   return (
-    <main className="relative flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-4 py-10 text-center mx-auto">
+    <main className="relative mx-auto w-full max-w-5xl flex-1 px-4 py-10">
       <HeroMascot src="/heroes/cutout-game.png" alt="" />
-      <div className="relative z-10 flex flex-col items-center">
-        <span className="text-6xl">🎮</span>
-        <h1 className="mt-4 text-3xl font-bold text-[var(--hero-gold)]">小遊戲</h1>
-        <p className="mt-3 text-sm text-zinc-300">
-          學習小遊戲會陸續加入，敬請期待！
-        </p>
-        <Link
-          href="/"
-          className="mt-6 rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-100"
-        >
-          回首頁
-        </Link>
+      <div className="relative z-10">
+        <h1 className="text-3xl font-bold text-[var(--hero-gold)]">小遊戲</h1>
+        <p className="mt-2 text-sm text-zinc-300">選一個小遊戲開始玩吧！其他遊戲會陸續加入。</p>
+
+        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {games.map((g) => {
+            const card = (
+              <>
+                {g.iconSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={g.iconSrc}
+                    alt=""
+                    className="h-12 w-12"
+                    style={{ imageRendering: 'pixelated' }}
+                  />
+                ) : (
+                  <span className="text-5xl">{g.emoji}</span>
+                )}
+                <h2 className="mt-3 text-lg font-bold text-zinc-900">{g.title}</h2>
+                {g.titleEn && (
+                  <p className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">{g.titleEn}</p>
+                )}
+                <p className="mt-2 text-xs text-zinc-500">{g.description}</p>
+                {!g.ready && (
+                  <span className="mt-3 rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-500">
+                    敬請期待
+                  </span>
+                )}
+              </>
+            );
+            const className =
+              'flex flex-col items-center rounded-2xl border-[3px] border-zinc-900 bg-white p-6 text-center shadow-md transition-transform';
+
+            return g.ready ? (
+              <Link
+                key={g.title}
+                href={g.href}
+                className={`${className} hover:-translate-y-1 hover:rotate-[0.5deg] hover:shadow-xl`}
+              >
+                {card}
+              </Link>
+            ) : (
+              <div key={g.title} className={`${className} opacity-60`}>
+                {card}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </main>
   );

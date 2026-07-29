@@ -1,36 +1,15 @@
 'use client';
 
 import { useEffect } from 'react';
+import { playCelebrationChime } from '@/lib/sound';
 
 interface ScoreCelebrationProps {
   score: number;
   total: number;
+  perfectMessage?: string;
 }
 
-// Short offline celebratory chime (ascending arpeggio), synthesized with the
-// Web Audio API so no external audio file or network request is needed.
-function playCelebrationChime() {
-  const AudioContextClass =
-    window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextClass) return;
-  const ctx = new AudioContextClass();
-  const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
-  notes.forEach((freq, i) => {
-    const start = ctx.currentTime + i * 0.15;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.2, start);
-    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(start);
-    osc.stop(start + 0.35);
-  });
-}
-
-export default function ScoreCelebration({ score, total }: ScoreCelebrationProps) {
+export default function ScoreCelebration({ score, total, perfectMessage }: ScoreCelebrationProps) {
   const percent = total > 0 ? Math.round((score / total) * 100) : 0;
   const tier: 'perfect' | 'great' | 'practice' = percent >= 100 ? 'perfect' : percent >= 80 ? 'great' : 'practice';
 
@@ -44,7 +23,7 @@ export default function ScoreCelebration({ score, total }: ScoreCelebrationProps
     return (
       <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border-[3px] border-[var(--hero-gold)] bg-gradient-to-b from-yellow-50 to-white p-6 text-center shadow-lg">
         <div className="animate-bounce text-5xl">🎆🏆🎆</div>
-        <div className="text-2xl font-bold text-[var(--hero-red)]">你超棒！</div>
+        <div className="text-2xl font-bold text-[var(--hero-red)]">{perfectMessage ?? '你超棒！'}</div>
       </div>
     );
   }

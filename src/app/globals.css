@@ -145,3 +145,55 @@ body {
   align-self: center;
 }
 
+/* ---------------------------------------------------------------------- */
+/* 小精靈大探險：吃豆動畫與電競風迷宮外框                                       */
+/* ---------------------------------------------------------------------- */
+
+@keyframes pacman-chomp {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.8);
+  }
+}
+
+.pacman-chomp {
+  animation: pacman-chomp 0.3s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes maze-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 10px 2px rgba(34, 211, 238, 0.45),
+      0 0 28px 6px rgba(217, 70, 239, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 18px 4px rgba(34, 211, 238, 0.7),
+      0 0 42px 10px rgba(217, 70, 239, 0.4);
+  }
+}
+
+.maze-frame {
+  animation: maze-glow 3s ease-in-out infinite;
+}
+
+@keyframes achievement-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+.achievement-marquee {
+  animation-name: achievement-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
