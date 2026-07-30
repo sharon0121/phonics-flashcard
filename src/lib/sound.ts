@@ -1,11 +1,24 @@
 // Tiny offline sound effects synthesized with the Web Audio API — no audio
 // files or network requests needed, works fully offline.
 
+// One shared AudioContext for the whole app, created lazily on first use.
+// Browsers cap how many AudioContexts can exist at once — constructing a new
+// one per sound effect (as this used to do) exhausts that limit within
+// seconds of rapid play and starts throwing "AudioContext encountered an
+// error" for every further call, which is what a frozen-feeling game usually
+// means here.
+let sharedCtx: AudioContext | null = null;
+
 function getAudioContext(): AudioContext | null {
+  if (sharedCtx && sharedCtx.state !== 'closed') {
+    if (sharedCtx.state === 'suspended') sharedCtx.resume().catch(() => {});
+    return sharedCtx;
+  }
   const AudioContextClass =
     window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) return null;
-  return new AudioContextClass();
+  sharedCtx = new AudioContextClass();
+  return sharedCtx;
 }
 
 export function playCelebrationChime(): void {
@@ -92,4 +105,41 @@ export function playErrorSound(): void {
   gain.connect(ctx.destination);
   osc.start();
   osc.stop(ctx.currentTime + 0.35);
+}
+
+// A quick two-note "hop" for climbing up one rung of the ladder.
+export function playClimbSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const notes = [440, 660];
+  notes.forEach((freq, i) => {
+    const start = ctx.currentTime + i * 0.07;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.18, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.12);
+  });
+}
+
+// A quick descending "thud" for falling down a floor of the ladder.
+export function playFallSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(300, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.25);
+  gain.gain.setValueAtTime(0.22, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.28);
 }

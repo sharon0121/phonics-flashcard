@@ -197,3 +197,230 @@ body {
   animation-iteration-count: infinite;
 }
 
+/* Hero Ladder Descend: a small CSS figure (head/torso/arms/legs, all sized in
+   em so it scales with the sprite wrapper's font-size) instead of a static
+   emoji — running left/right swings limbs in a side-facing walk cycle, while
+   falling switches to a front-facing pose with both arms flailing. */
+.hero-figure {
+  position: relative;
+  width: 0.95em;
+  height: 1.35em;
+}
+.hero-head {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0.42em;
+  height: 0.42em;
+  margin-left: -0.21em;
+  border-radius: 50%;
+  background: #ffd8a8;
+  border: 0.03em solid #7c4a1e;
+}
+.hero-torso {
+  position: absolute;
+  top: 0.38em;
+  left: 50%;
+  width: 0.46em;
+  height: 0.58em;
+  margin-left: -0.23em;
+  border-radius: 0.12em;
+  background: #2563eb;
+  border: 0.03em solid #1e3a8a;
+}
+.hero-arm {
+  position: absolute;
+  top: 0.42em;
+  width: 0.15em;
+  height: 0.5em;
+  border-radius: 0.08em;
+  background: #ffd8a8;
+  border: 0.025em solid #7c4a1e;
+  transform-origin: top center;
+}
+.hero-arm-left {
+  left: 0.06em;
+}
+.hero-arm-right {
+  right: 0.06em;
+}
+.hero-leg {
+  position: absolute;
+  top: 0.92em;
+  width: 0.18em;
+  height: 0.45em;
+  border-radius: 0.06em;
+  /* Bright yellow, not navy — the stage background is dark blue, so a dark
+     navy pair of pants used to blend right into it and vanish. */
+  background: #facc15;
+  border: 0.025em solid #854d0e;
+  transform-origin: top center;
+}
+.hero-leg-left {
+  left: 0.28em;
+}
+.hero-leg-right {
+  right: 0.28em;
+}
+
+@keyframes hero-run-bob {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -0.06em;
+  }
+}
+@keyframes hero-run-leg-left {
+  0%,
+  100% {
+    rotate: 35deg;
+  }
+  50% {
+    rotate: -35deg;
+  }
+}
+@keyframes hero-run-leg-right {
+  0%,
+  100% {
+    rotate: -35deg;
+  }
+  50% {
+    rotate: 35deg;
+  }
+}
+@keyframes hero-run-arm-left {
+  0%,
+  100% {
+    rotate: -30deg;
+  }
+  50% {
+    rotate: 30deg;
+  }
+}
+@keyframes hero-run-arm-right {
+  0%,
+  100% {
+    rotate: 30deg;
+  }
+  50% {
+    rotate: -30deg;
+  }
+}
+.hero-running .hero-figure {
+  animation: hero-run-bob 0.28s ease-in-out infinite;
+}
+.hero-running .hero-leg-left {
+  animation: hero-run-leg-left 0.28s ease-in-out infinite;
+}
+.hero-running .hero-leg-right {
+  animation: hero-run-leg-right 0.28s ease-in-out infinite;
+}
+.hero-running .hero-arm-left {
+  animation: hero-run-arm-left 0.28s ease-in-out infinite;
+}
+.hero-running .hero-arm-right {
+  animation: hero-run-arm-right 0.28s ease-in-out infinite;
+}
+
+@keyframes hero-fall-arm-left {
+  0%,
+  100% {
+    rotate: -60deg;
+  }
+  50% {
+    rotate: -115deg;
+  }
+}
+@keyframes hero-fall-arm-right {
+  0%,
+  100% {
+    rotate: 60deg;
+  }
+  50% {
+    rotate: 115deg;
+  }
+}
+@keyframes hero-fall-leg {
+  0%,
+  100% {
+    rotate: -8deg;
+  }
+  50% {
+    rotate: 8deg;
+  }
+}
+.hero-falling .hero-arm-left {
+  animation: hero-fall-arm-left 0.4s ease-in-out infinite;
+}
+.hero-falling .hero-arm-right {
+  animation: hero-fall-arm-right 0.4s ease-in-out infinite;
+}
+.hero-falling .hero-leg-left {
+  animation: hero-fall-leg 0.4s ease-in-out infinite;
+}
+.hero-falling .hero-leg-right {
+  animation: hero-fall-leg 0.4s ease-in-out infinite reverse;
+}
+
+@keyframes hero-letter-glow {
+  0% {
+    filter: drop-shadow(0 0 0 rgba(255, 204, 51, 0));
+  }
+  30% {
+    filter: drop-shadow(0 0 10px rgba(255, 204, 51, 0.95)) drop-shadow(0 0 20px rgba(255, 204, 51, 0.6));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgba(255, 204, 51, 0));
+  }
+}
+.hero-letter-glow {
+  animation: hero-letter-glow 0.5s ease-out;
+}
+
+@keyframes stage-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-6px, 2px);
+  }
+  40% {
+    transform: translate(5px, -3px);
+  }
+  60% {
+    transform: translate(-4px, 3px);
+  }
+  80% {
+    transform: translate(3px, -2px);
+  }
+}
+.stage-shake {
+  animation: stage-shake 0.4s ease-in-out;
+}
+
+@keyframes conveyor-scroll-left {
+  from {
+    background-position-x: 0;
+  }
+  to {
+    background-position-x: -20px;
+  }
+}
+@keyframes conveyor-scroll-right {
+  from {
+    background-position-x: 0;
+  }
+  to {
+    background-position-x: 20px;
+  }
+}
+.conveyor-left {
+  animation: conveyor-scroll-left 0.6s linear infinite;
+}
+.conveyor-right {
+  animation: conveyor-scroll-right 0.6s linear infinite;
+}
+
