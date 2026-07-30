@@ -11,8 +11,23 @@ import {
   toggleBuiltinSentence,
   enableAllBuiltinSentences,
 } from '@/lib/gameSentences';
+import {
+  useCoordTermCount,
+  useCoordMaxValue,
+  useCoordTimeLimit,
+  setCoordTermCount,
+  setCoordMaxValue,
+  setCoordTimeLimit,
+  TERM_COUNT_OPTIONS,
+  COORD_NUMBER_RANGE_OPTIONS,
+  TIME_LIMIT_OPTIONS,
+} from '@/lib/coordinateHuntSettings';
 
 export default function SentenceSettingsView() {
+  const termCount = useCoordTermCount();
+  const maxValue = useCoordMaxValue();
+  const timeLimit = useCoordTimeLimit();
+
   const customSentences = useCustomSentences();
   const disabledIds = useDisabledBuiltinIds();
   const [en, setEn] = useState('');
@@ -40,16 +55,88 @@ export default function SentenceSettingsView() {
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
-      <Link href="/games/coordinate-hunt" className="text-sm font-medium text-[var(--hero-gold)] hover:underline">
-        ← 回座標寶藏迷宮
+      <Link href="/games/coordinate-hunt" className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-bold text-white hover:bg-white/20">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+          <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
+        </svg>
+        Back
       </Link>
-      <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 句子管理</h1>
-      <p className="mt-1 text-sm text-zinc-300">
-        目前題庫共 {totalActiveCount} 句（內建 {enabledBuiltinCount} / {BUILTIN_SENTENCES.length} 句啟用，自訂{' '}
-        {customSentences.length} 句）。可以新增句子，也可以關閉太難或太簡單的內建句子，調整小朋友的練習難度。
-      </p>
+      <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 遊戲設定</h1>
 
+      {/* ── Math difficulty ── */}
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
+        <h2 className="text-sm font-bold text-zinc-900">🔢 行數（題目有幾個數字）</h2>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {TERM_COUNT_OPTIONS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setCoordTermCount(n)}
+              className={`rounded-lg px-4 py-2 text-sm font-bold ${
+                termCount === n
+                  ? 'bg-[var(--hero-gold)] text-zinc-900'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+              }`}
+            >
+              {n} 個數字
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          例：2 個數字 → 3 + 5 = ?；3 個數字 → 3 + 5 − 2 = ?
+        </p>
+
+        <h2 className="mt-4 text-sm font-bold text-zinc-900">📏 數字大小（題目中每個數字的範圍）</h2>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {COORD_NUMBER_RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setCoordMaxValue(opt.value)}
+              className={`rounded-lg px-4 py-2 text-sm font-bold ${
+                maxValue === opt.value
+                  ? 'bg-[var(--hero-gold)] text-zinc-900'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">控制題目中每個數字的大小（不是答案的大小）。</p>
+
+        <h2 className="mt-4 text-sm font-bold text-zinc-900">⏱️ 時間限制</h2>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {TIME_LIMIT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setCoordTimeLimit(opt.value)}
+              className={`rounded-lg px-4 py-2 text-sm font-bold ${
+                timeLimit === opt.value
+                  ? 'bg-[var(--hero-gold)] text-zinc-900'
+                  : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          計時從按下「開始遊戲」開始，時間到自動結束並顯示得分。
+        </p>
+      </div>
+
+      {/* ── Sentence management ── */}
+      <div className="mt-8">
+        <h2 className="text-lg font-bold text-[var(--hero-gold)]">📝 句子管理</h2>
+        <p className="mt-1 text-sm text-zinc-300">
+          目前題庫共 {totalActiveCount} 句（內建 {enabledBuiltinCount} / {BUILTIN_SENTENCES.length} 句啟用，自訂{' '}
+          {customSentences.length} 句）。
+        </p>
+      </div>
+
+      <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
         <label className="block text-sm font-medium text-zinc-700">
           英文句子（用空白分開單字）
           <input
@@ -80,8 +167,8 @@ export default function SentenceSettingsView() {
         </button>
       </div>
 
-      <div className="mt-8">
-        <h2 className="text-lg font-bold text-[var(--hero-gold)]">已新增的句子</h2>
+      <div className="mt-6">
+        <h3 className="text-base font-bold text-[var(--hero-gold)]">已新增的句子</h3>
         {customSentences.length === 0 ? (
           <p className="mt-2 text-sm text-zinc-400">還沒有新增任何句子。</p>
         ) : (
@@ -109,11 +196,11 @@ export default function SentenceSettingsView() {
         )}
       </div>
 
-      <div className="mt-8">
+      <div className="mt-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[var(--hero-gold)]">
+          <h3 className="text-base font-bold text-[var(--hero-gold)]">
             內建題庫（{enabledBuiltinCount} / {BUILTIN_SENTENCES.length} 已啟用）
-          </h2>
+          </h3>
           {disabledIds.length > 0 && (
             <button
               type="button"
