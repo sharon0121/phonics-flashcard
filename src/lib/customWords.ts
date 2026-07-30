@@ -46,6 +46,7 @@ export function addCustomWord(data: {
   kk?: string;
   en?: string;
   sentence?: string;
+  sentenceZh?: string;
   emoji?: string;
 }): Word {
   const existing = loadCustomWords();
@@ -58,6 +59,7 @@ export function addCustomWord(data: {
     kk: data.kk?.trim() ?? '',
     en: data.en?.trim() ?? '',
     sentence: data.sentence?.trim() ?? '',
+    sentenceZh: data.sentenceZh?.trim() || undefined,
     emoji: data.emoji?.trim() ?? '📝',
     phase: 0,
     phaseLabel: '自訂單字',

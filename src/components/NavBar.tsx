@@ -19,7 +19,7 @@ export default function NavBar() {
   const pathname = usePathname();
 
   return (
-    <nav className="no-print sticky top-0 z-10 border-b-4 border-[var(--hero-gold)] bg-gradient-to-r from-[var(--hero-blue-dark)] via-[var(--hero-blue)] to-[var(--hero-blue-dark)] shadow-lg">
+    <nav className="no-print sticky top-0 z-50 border-b-4 border-[var(--hero-gold)] bg-gradient-to-r from-[var(--hero-blue-dark)] via-[var(--hero-blue)] to-[var(--hero-blue-dark)] shadow-lg">
       <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-1 px-3 py-2.5 sm:px-4 sm:py-3">
         <span className="mr-2 shrink-0 text-base font-bold whitespace-nowrap text-[var(--hero-gold)] sm:mr-4 sm:text-xl">
           💥 英雄學習平台

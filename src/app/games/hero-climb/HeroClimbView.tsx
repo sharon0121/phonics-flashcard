@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Word } from '@/lib/types';
-import { useThisWeekClimbWords, useReinforcementClimbWords } from '@/lib/heroClimbSettings';
+import { useThisWeekClimbWords, useReinforcementClimbWords, useSpeechRate, SPEECH_RATE_VALUES, useStartDifficulty, START_DIFFICULTY_VALUES } from '@/lib/heroClimbSettings';
+import { getUsedWordIds, persistUsedWordIds } from '@/lib/heroClimbUsedWords';
 import { useCustomWords } from '@/lib/customWords';
 import {
   generateRows,
@@ -28,19 +29,18 @@ import LeaderboardPanel from './LeaderboardPanel';
 
 const START_LIVES = 5;
 const SPEED_BOOST_MS = 10000; // how long a speed-boost pickup lasts
-const SPEED_BOOST_MULTIPLIER = 1.8; // applied to the ceiling's scroll speed only, on top of difficulty
-const FIXED_SCREEN_TOP_PCT = 30; // where the visible window's top edge sits, in world-relative-to-camera terms
+const SPEED_BOOST_MULTIPLIER = 1.8; // ceiling scroll multiplied by this when speed-boost is active (1.8 × 1.8 = ×3.24 max)
+const FIXED_SCREEN_TOP_PCT = 3; // where the visible window's top edge sits, in world-relative-to-camera terms
 const CHAR_HALF_WIDTH = 5; // percent, for horizontal collision
 const FALL_SPEED = 32; // world units per second while actively falling
 const MOVE_SPEED = 62; // percent of stage width per second
 const GENERATE_AHEAD = 60; // keep platforms generated this far below the visible bottom
 const PRUNE_BEHIND = 40; // drop platforms once they're this far above the visible top
-const HAZARD_COOLDOWN_MS = 900;
 const CELEBRATION_MS = 1800;
 const CONVEYOR_SPEED = 26; // percent of stage width per second, added on top of player input
-const COLLAPSE_DELAY_MS = 550; // how long a collapsing step holds before giving way
-const SPRING_BOOST = 26; // total world units risen over the spring bounce
-const SPRING_RISE_MS = 260; // how long the bounce arc takes to play out
+const COLLAPSE_DELAY_MS = 250; // how long a collapsing step holds before giving way
+const SPRING_BOOST = 14; // total world units risen over the spring bounce
+const SPRING_RISE_MS = 200; // how long the bounce arc takes to play out
 
 // The ceiling scrolls down at a constant pace no matter what the hero is
 // doing — falling faster than this widens the safety lead; resting on a
@@ -59,14 +59,13 @@ const RECOVERY_LEAD = 20; // lead restored after getting caught
 // camera speeds up to keep the hero on-screen instead.
 const MAX_LEAD = 100 - FIXED_SCREEN_TOP_PCT - 15;
 
-// The longer a run goes (by wall-clock time, not depth — so it keeps ramping
-// even if the hero is stuck bouncing in place), the faster everything gets:
-// falling, the chasing ceiling, and the conveyors all scale up together (so
-// the danger-margin math above stays balanced), ramping from 1x up to
-// DIFFICULTY_MAX_MULTIPLIER over DIFFICULTY_RAMP_SECONDS, then holding
-// steady so it never becomes literally unbeatable.
+// Speed increases every DIFFICULTY_WORDS_PER_TIER words completed, stepping
+// up by DIFFICULTY_STEP each tier until DIFFICULTY_MAX_MULTIPLIER is reached.
+// Tier 0 (0–4 words): ×1.0 → Tier 1 (5–9): ×1.2 → Tier 2 (10–14): ×1.4
+// → Tier 3 (15–19): ×1.6 → Tier 4+ (20+): ×1.8 (capped).
 const DIFFICULTY_MAX_MULTIPLIER = 1.8;
-const DIFFICULTY_RAMP_SECONDS = 90;
+const DIFFICULTY_WORDS_PER_TIER = 5;
+const DIFFICULTY_STEP = 0.2;
 
 type Direction = 'left' | 'right';
 
@@ -145,18 +144,28 @@ interface LatestRefs {
   weekWords: Word[];
   reinforcementWords: Word[];
   customWords: Word[];
+  speechRateValue: number;
 }
 
 export default function HeroClimbView() {
   const weekWords = useThisWeekClimbWords();
   const reinforcementWords = useReinforcementClimbWords();
   const customWords = useCustomWords();
+  const speechRate = useSpeechRate();
+  const startDifficulty = useStartDifficulty();
   const lastPlayerName = useLastPlayerName();
 
   const usedWordIdsRef = useRef(new Set<string>());
   const [target, setTarget] = useState<Word>(() =>
     pickNextTargetWord(weekWords, reinforcementWords, customWords, usedWordIdsRef.current),
   );
+  // Merge localStorage used-words into the in-memory ref after hydration,
+  // then persist back (so the initial word is also recorded).
+  useEffect(() => {
+    const stored = getUsedWordIds();
+    stored.forEach((id) => usedWordIdsRef.current.add(id));
+    persistUsedWordIds(usedWordIdsRef.current);
+  }, []);
   const outstandingRef = useRef<number[]>(makeLetterQueue(target.word));
   const [filledPositions, setFilledPositions] = useState<boolean[]>(() => new Array(target.word.length).fill(false));
 
@@ -192,9 +201,9 @@ export default function HeroClimbView() {
 
   // Always-fresh snapshot of state the physics loop needs but shouldn't
   // restart the loop over — read at the moment an event actually happens.
-  const latestRef = useRef<LatestRefs>({ target, filledPositions, weekWords, reinforcementWords, customWords });
+  const latestRef = useRef<LatestRefs>({ target, filledPositions, weekWords, reinforcementWords, customWords, speechRateValue: SPEECH_RATE_VALUES[speechRate] });
   useEffect(() => {
-    latestRef.current = { target, filledPositions, weekWords, reinforcementWords, customWords };
+    latestRef.current = { target, filledPositions, weekWords, reinforcementWords, customWords, speechRateValue: SPEECH_RATE_VALUES[speechRate] };
   });
 
   const charXRef = useRef(50);
@@ -210,7 +219,7 @@ export default function HeroClimbView() {
   const springGraceRef = useRef(0);
   const heldDirRef = useRef<Direction | null>(null);
   const facingRef = useRef<Direction>('right');
-  const hazardHitAtRef = useRef<Map<string, number>>(new Map());
+  const hitSpikeIdsRef = useRef<Set<string>>(new Set());
   const collapseAtRef = useRef<Map<string, number>>(new Map());
   const fallenIdsRef = useRef<Set<string>>(new Set());
   const [fallenIds, setFallenIds] = useState<Set<string>>(new Set());
@@ -220,6 +229,13 @@ export default function HeroClimbView() {
   const [boosting, setBoosting] = useState(false);
   const lastFrameTimeRef = useRef<number | null>(null);
   const runStartTimeRef = useRef<number | null>(null);
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const [runKey, setRunKey] = useState(0);
+  const startDifficultyRef = useRef(START_DIFFICULTY_VALUES[startDifficulty]);
+  useEffect(() => {
+    startDifficultyRef.current = START_DIFFICULTY_VALUES[startDifficulty];
+  }, [startDifficulty]);
 
   const worldRef = useRef<HTMLDivElement>(null);
   const heroElRef = useRef<HTMLDivElement>(null);
@@ -261,19 +277,18 @@ export default function HeroClimbView() {
     celebratingRef.current = true;
     setCelebrating(true);
     playCelebrationChime();
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      const utter = new SpeechSynthesisUtterance(latestRef.current.target.word);
-      utter.lang = 'en-US';
-      utter.rate = 0.85;
-      window.speechSynthesis.cancel();
-      setTimeout(() => window.speechSynthesis.speak(utter), 50);
-    }
     wordsCompletedRef.current += 1;
     setWordsCompletedCount(wordsCompletedRef.current);
 
-    setTimeout(() => {
+    // Called once all speech finishes (or immediately if speech is unavailable).
+    // The `done` flag prevents double-firing when the safety timer and onend race.
+    let done = false;
+    function advanceToNextWord() {
+      if (done) return;
+      done = true;
       const { weekWords: w, reinforcementWords: r, customWords: c } = latestRef.current;
       const nextWord = pickNextTargetWord(w, r, c, usedWordIdsRef.current);
+      persistUsedWordIds(usedWordIdsRef.current);
       setTarget(nextWord);
       outstandingRef.current = makeLetterQueue(nextWord.word);
       const fresh = new Array(nextWord.word.length).fill(false);
@@ -281,7 +296,37 @@ export default function HeroClimbView() {
       setFilledPositions(fresh);
       celebratingRef.current = false;
       setCelebrating(false);
-    }, CELEBRATION_MS);
+    }
+
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const { word, zh, sentence, sentenceZh } = latestRef.current.target;
+      const rate = latestRef.current.speechRateValue;
+      // Sequence: English word → Chinese → English sentence → Chinese sentence
+      const steps: Array<{ text: string; lang: string }> = [
+        { text: word, lang: 'en-US' },
+        { text: zh, lang: 'zh-TW' },
+        ...(sentence ? [{ text: sentence, lang: 'en-US' }] : []),
+        ...(sentenceZh ? [{ text: sentenceZh, lang: 'zh-TW' }] : []),
+      ];
+      function speakNext(i: number) {
+        if (i >= steps.length) {
+          setTimeout(advanceToNextWord, 600);
+          return;
+        }
+        const u = new SpeechSynthesisUtterance(steps[i].text);
+        u.lang = steps[i].lang;
+        u.rate = rate;
+        u.onend = () => setTimeout(() => speakNext(i + 1), 400);
+        window.speechSynthesis.speak(u);
+      }
+      window.speechSynthesis.cancel();
+      setTimeout(() => speakNext(0), 50);
+      // Safety: if the speech chain stalls (can happen on some browsers),
+      // advance after 15 s so the game never gets stuck.
+      setTimeout(advanceToNextWord, 15000);
+    } else {
+      setTimeout(advanceToNextWord, CELEBRATION_MS);
+    }
   }, []);
 
   const collectLetter = useCallback(
@@ -324,7 +369,7 @@ export default function HeroClimbView() {
   // Main physics loop — runs once per game (only restarts on game-over/retry),
   // reading fresh word/pool data via latestRef so it never goes stale.
   useEffect(() => {
-    if (gameOver) return;
+    if (gameOver || paused) return;
     let rafId: number;
 
     function tick(now: number) {
@@ -334,11 +379,9 @@ export default function HeroClimbView() {
       lastFrameTimeRef.current = now;
 
       if (!celebratingRef.current) {
-        // Everything speeds up together the longer this run has lasted, so
-        // the danger-margin balance from the constants above holds throughout.
-        const elapsedSec = (now - runStartTimeRef.current) / 1000;
-        const difficulty =
-          1 + (DIFFICULTY_MAX_MULTIPLIER - 1) * Math.min(1, elapsedSec / DIFFICULTY_RAMP_SECONDS);
+        // Speed tier advances every DIFFICULTY_WORDS_PER_TIER words completed.
+        const tier = Math.floor(wordsCompletedRef.current / DIFFICULTY_WORDS_PER_TIER);
+        const difficulty = Math.min(DIFFICULTY_MAX_MULTIPLIER, startDifficultyRef.current + tier * DIFFICULTY_STEP);
 
         if (heldDirRef.current === 'left') charXRef.current -= MOVE_SPEED * dt;
         if (heldDirRef.current === 'right') charXRef.current += MOVE_SPEED * dt;
@@ -354,14 +397,17 @@ export default function HeroClimbView() {
         }
         charXRef.current = Math.min(100 - CHAR_HALF_WIDTH, Math.max(CHAR_HALF_WIDTH, charXRef.current));
 
-        if (restingOnRef.current && !overlapsX(restingOnRef.current)) {
+        // Use a tighter 2% margin for "stay on platform" so the hero falls off
+        // as soon as their centre clears the edge, not after travelling 5% past it.
+        const stillOn = (p: Platform) =>
+          charXRef.current + 2 > p.x && charXRef.current - 2 < p.x + p.width;
+        if (restingOnRef.current && !stillOn(restingOnRef.current)) {
           restingOnRef.current = null;
         }
 
         const triggerHazardOnce = (p: Platform) => {
-          const last = hazardHitAtRef.current.get(p.id) ?? -Infinity;
-          if (now - last > HAZARD_COOLDOWN_MS) {
-            hazardHitAtRef.current.set(p.id, now);
+          if (!hitSpikeIdsRef.current.has(p.id)) {
+            hitSpikeIdsRef.current.add(p.id);
             loseLife();
           }
         };
@@ -381,7 +427,7 @@ export default function HeroClimbView() {
         } else if (!restingOnRef.current) {
           const nextY = charYRef.current + FALL_SPEED * difficulty * dt;
           const crossedPlatforms = platformsRef.current
-            .filter((p) => p.y > charYRef.current - 0.01 && p.y <= nextY && overlapsX(p))
+            .filter((p) => p.y > charYRef.current && p.y <= nextY && overlapsX(p))
             .sort((a, b) => a.y - b.y);
 
           // A spike still catches the hero like solid ground — it costs a
@@ -435,7 +481,15 @@ export default function HeroClimbView() {
         if (standing && standing.letterIndex !== undefined && !latestRef.current.filledPositions[standing.letterIndex]) {
           collectLetter(standing.letterIndex);
         }
-        if (standing && standing.item !== undefined && !collectedItemIdsRef.current.has(standing.id)) {
+        // Items are triggered only when the hero's centre is within 1% of the
+        // item's centre (platform midpoint), so walking past the edge of a
+        // platform never accidentally picks up a skull or heart.
+        if (
+          standing &&
+          standing.item !== undefined &&
+          !collectedItemIdsRef.current.has(standing.id) &&
+          Math.abs(charXRef.current - (standing.x + standing.width / 2)) < 1
+        ) {
           collectItem(standing);
         }
 
@@ -516,7 +570,7 @@ export default function HeroClimbView() {
       cancelAnimationFrame(rafId);
       lastFrameTimeRef.current = null;
     };
-  }, [gameOver, loseLife, collectLetter, collectItem]);
+  }, [gameOver, paused, runKey, loseLife, collectLetter, collectItem]);
 
   function startHold(dir: Direction) {
     heldDirRef.current = dir;
@@ -559,7 +613,7 @@ export default function HeroClimbView() {
     springGraceRef.current = 0;
     heldDirRef.current = null;
     facingRef.current = 'right';
-    hazardHitAtRef.current = new Map();
+    hitSpikeIdsRef.current = new Set();
     collapseAtRef.current = new Map();
     fallenIdsRef.current = new Set();
     setFallenIds(new Set());
@@ -571,9 +625,10 @@ export default function HeroClimbView() {
     runStartTimeRef.current = null;
     maxDepthRef.current = 0;
     wordsCompletedRef.current = 0;
-    usedWordIdsRef.current = new Set();
+    usedWordIdsRef.current = new Set(getUsedWordIds());
 
     const nextWord = pickNextTargetWord(weekWords, reinforcementWords, customWords, usedWordIdsRef.current);
+    persistUsedWordIds(usedWordIdsRef.current);
     outstandingRef.current = makeLetterQueue(nextWord.word);
     const fresh = new Array(nextWord.word.length).fill(false);
     filledPositionsRef.current = fresh;
@@ -588,8 +643,18 @@ export default function HeroClimbView() {
     setCelebrating(false);
     celebratingRef.current = false;
     setCaughtFlash(false);
+    pausedRef.current = false;
+    setPaused(false);
     setGameOver(false);
+    setRunKey((k) => k + 1);
     setRenamed(false);
+  }
+
+  function togglePause() {
+    if (gameOver || celebratingRef.current) return;
+    const next = !pausedRef.current;
+    pausedRef.current = next;
+    setPaused(next);
   }
 
   function handleRename() {
@@ -654,6 +719,26 @@ export default function HeroClimbView() {
                 {maxDepth > 0 && <span className="ml-1.5 text-xs font-medium text-zinc-400">（最深 {maxDepth}）</span>}
               </span>
               <span>🔤 拼出 {wordsCompletedCount} 個</span>
+              {!gameOver && (
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={togglePause}
+                    aria-label={paused ? '繼續' : '暫停'}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-base hover:bg-white/25"
+                  >
+                    {paused ? '▶' : '⏸'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={retry}
+                    aria-label="重新開始"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-base hover:bg-white/25"
+                  >
+                    🔄
+                  </button>
+                </div>
+              )}
             </div>
 
             {boosting && (
@@ -710,7 +795,7 @@ export default function HeroClimbView() {
                   return (
                     <div
                       key={p.id}
-                      className="absolute transition-opacity duration-300"
+                      className="absolute transition-opacity duration-150"
                       style={{ top: `${p.y}%`, left: `${p.x}%`, width: `${p.width}%`, opacity: fallen ? 0 : 1 }}
                     >
                       <PlatformBar kind={p.kind} />
@@ -743,6 +828,26 @@ export default function HeroClimbView() {
                   </div>
                 </div>
               </div>
+
+              {paused && !gameOver && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/80">
+                  <p className="text-2xl font-bold text-white">⏸ 遊戲暫停</p>
+                  <button
+                    type="button"
+                    onClick={togglePause}
+                    className="rounded-xl bg-[var(--hero-gold)] px-6 py-2.5 text-base font-bold text-zinc-900 shadow hover:brightness-110"
+                  >
+                    ▶ 繼續遊戲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={retry}
+                    className="rounded-xl bg-zinc-600 px-6 py-2.5 text-base font-bold text-white shadow hover:bg-zinc-500"
+                  >
+                    🔄 重新開始
+                  </button>
+                </div>
+              )}
 
               {celebrating && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/75 text-center">

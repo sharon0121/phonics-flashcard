@@ -19,7 +19,7 @@ const MIN_WIDTH = 24;
 const MAX_WIDTH = 36;
 const STAGE_MARGIN = 6;
 const SPIKE_CHANCE = 0.16;
-const LETTER_CHANCE = 0.55;
+const LETTER_CHANCE = 0.80;
 // Rolled only when a plank didn't already get a letter — a heart heals, a
 // skull costs a life, and a speed boost temporarily speeds up the ceiling.
 const HEART_CHANCE = 0.1;
