@@ -45,6 +45,7 @@ const SPEED_BOOST_MS = 10000; // how long a speed-boost pickup lasts
 const SPEED_BOOST_MULTIPLIER = 1.8; // ceiling scroll multiplied by this when speed-boost is active (1.8 × 1.8 = ×3.24 max)
 const FIXED_SCREEN_TOP_PCT = 3; // where the visible window's top edge sits, in world-relative-to-camera terms
 const CHAR_HALF_WIDTH = 5; // percent, for horizontal collision
+const PICKUP_CENTER_TOLERANCE = 2; // percent — how close to a platform's centre the hero must be to collect its letter/item
 const FALL_SPEED = 32; // world units per second while actively falling
 const MOVE_SPEED = 62; // percent of stage width per second
 const GENERATE_AHEAD = 60; // keep platforms generated this far below the visible bottom
@@ -555,10 +556,11 @@ export default function HeroClimbView() {
 
         const standing = restingOnRef.current;
         // Letters and items alike are only triggered once the hero's centre
-        // is within 1% of the platform's own centre — so walking past the
-        // edge of a platform never accidentally picks up a letter, skull, or
-        // heart just from resting somewhere near it.
-        const centredOnStanding = !!standing && Math.abs(charXRef.current - (standing.x + standing.width / 2)) < 1;
+        // is within PICKUP_CENTER_TOLERANCE of the platform's own centre —
+        // so walking past the edge of a platform never accidentally picks up
+        // a letter, skull, or heart just from resting somewhere near it.
+        const centredOnStanding =
+          !!standing && Math.abs(charXRef.current - (standing.x + standing.width / 2)) < PICKUP_CENTER_TOLERANCE;
         if (
           standing &&
           centredOnStanding &&

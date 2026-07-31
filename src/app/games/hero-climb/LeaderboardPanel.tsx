@@ -2,7 +2,7 @@
 
 import { useClimbLeaderboard } from '@/lib/heroClimbHistory';
 
-const TOP_N = 10;
+const TOP_N = 15;
 
 function Row({ rank, name, floor, wordsCompleted }: { rank: number; name: string; floor: number; wordsCompleted: number }) {
   return (
@@ -42,14 +42,15 @@ export default function LeaderboardPanel({ matchHeight }: { matchHeight?: number
         )}
       </div>
 
-      {/* sm and up: sidebar matched to the game panel's own rendered height,
-          showing only the top 10 so it never grows past that height in the
-          first place. */}
+      {/* sm and up: sidebar matched to the game panel's own rendered height;
+          capped to the top N so a huge record count doesn't drive its
+          natural size, and internally scrollable if that still doesn't fit
+          the matched height. */}
       <div
         className="hidden w-36 shrink-0 flex-col rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-3 sm:flex"
         style={matchHeight ? { height: `${matchHeight}px` } : undefined}
       >
-        <h2 className="text-center text-xs font-bold text-zinc-900">🏆 排行榜 Top 10</h2>
+        <h2 className="text-center text-xs font-bold text-zinc-900">🏆 排行榜 Top {TOP_N}</h2>
         <p className="text-center text-[10px] text-zinc-500">共 {leaderboard.length} 筆紀錄</p>
         <div className="mt-2 flex-1 overflow-y-auto">
           {leaderboard.length === 0 ? (
