@@ -3,17 +3,18 @@
 interface SpeakButtonProps {
   text: string;
   lang?: string;
+  rate?: number;
   className?: string;
 }
 
-export default function SpeakButton({ text, lang = 'en-US', className = '' }: SpeakButtonProps) {
+export default function SpeakButton({ text, lang = 'en-US', rate = 0.85, className = '' }: SpeakButtonProps) {
   function handleSpeak(e: React.MouseEvent) {
     e.stopPropagation();
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     // Create utterance before cancel to keep it within the user-gesture event
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = 0.85;
+    utterance.rate = rate;
     window.speechSynthesis.cancel();
     // iOS Safari requires a small delay after cancel() before speak() works
     setTimeout(() => window.speechSynthesis.speak(utterance), 50);
