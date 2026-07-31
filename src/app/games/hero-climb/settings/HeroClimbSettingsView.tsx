@@ -4,10 +4,12 @@ import Link from 'next/link';
 import {
   useSpeechRate, setSpeechRate, type SpeechRate,
   useStartDifficulty, setStartDifficulty, type StartDifficulty, START_DIFFICULTY_VALUES,
+  useWordSources, setWordSources, WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, type WordSourceKey,
 } from '@/lib/heroClimbSettings';
-import { useUsedWordIds, removeUsedWordId, clearUsedWordIds } from '@/lib/heroClimbUsedWords';
+import { useUsedWordIds, removeUsedWordId, clearUsedWordIds, addReviewWordId } from '@/lib/heroClimbUsedWords';
 import { useCustomWords } from '@/lib/customWords';
 import { words as PHONICS_WORDS } from '@/data/words';
+import { sightWords as SIGHT_WORDS } from '@/data/sightWords';
 import type { Word } from '@/lib/types';
 
 const SPEECH_RATE_OPTIONS: { value: SpeechRate; label: string; desc: string }[] = [
@@ -27,11 +29,17 @@ const START_DIFFICULTY_OPTIONS: { value: StartDifficulty; label: string }[] = [
 export default function HeroClimbSettingsView() {
   const speechRate = useSpeechRate();
   const startDifficulty = useStartDifficulty();
+  const wordSources = useWordSources();
   const usedIds = useUsedWordIds();
   const customWords = useCustomWords();
 
-  const allWords: Word[] = [...(PHONICS_WORDS as Word[]), ...customWords];
+  const allWords: Word[] = [...(PHONICS_WORDS as Word[]), ...(SIGHT_WORDS as Word[]), ...customWords];
   const usedWordsList = allWords.filter((w) => usedIds.has(w.id));
+
+  function toggleSource(key: WordSourceKey) {
+    const next = wordSources.includes(key) ? wordSources.filter((k) => k !== key) : [...wordSources, key];
+    setWordSources(next);
+  }
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
@@ -46,10 +54,46 @@ export default function HeroClimbSettingsView() {
       </Link>
       <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 遊戲設定</h1>
       <p className="mt-1 text-sm text-zinc-300">
-        出題順序固定為「本週單字 → 加強單字 → 自訂單字 → 標準題庫」，拼完一個單字就換下一個，同一輪內盡量不重複。
+        出題只會從下方勾選的來源抽題；有勾選多個來源時，抽題順序固定為「本週單字 → 加強單字 → 自訂單字 → 自然發音卡 →
+        重要單字卡」，拼完一個單字就換下一個，同一輪內盡量不重複。
       </p>
 
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-zinc-900">📚 題目來源</h2>
+          <button
+            type="button"
+            onClick={() => setWordSources(ALL_WORD_SOURCES)}
+            className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
+          >
+            全選
+          </button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {WORD_SOURCE_DISPLAY_ORDER.map((key) => {
+            const checked = wordSources.includes(key);
+            return (
+              <label
+                key={key}
+                className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
+                  checked ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleSource(key)}
+                  className="h-4 w-4 cursor-pointer accent-zinc-900"
+                />
+                {WORD_SOURCE_LABELS[key]}
+              </label>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">可複選，也可以全選；如果取消到剩 0 個，會自動恢復成全選。</p>
+      </div>
+
+      <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
         <h2 className="text-sm font-bold text-zinc-900">🔊 語音速度</h2>
         <div className="mt-2 flex gap-2">
           {SPEECH_RATE_OPTIONS.map((opt) => (
@@ -108,7 +152,7 @@ export default function HeroClimbSettingsView() {
           )}
         </div>
         <p className="mt-1 text-xs text-zinc-400">
-          打勾的單字本輪不會重複出現。取消打勾讓單字可以再次出現。
+          打勾的單字不會重複出現。取消打勾讓單字可以再次出現，而且大約每 10 個單字裡會強制安排一次複習，確保真的會再遇到。
         </p>
         {usedWordsList.length === 0 ? (
           <p className="mt-2 text-sm text-zinc-400">還沒有單字出現過，快去玩玩看吧！</p>
@@ -122,7 +166,10 @@ export default function HeroClimbSettingsView() {
                 <input
                   type="checkbox"
                   checked
-                  onChange={() => removeUsedWordId(w.id)}
+                  onChange={() => {
+                    removeUsedWordId(w.id);
+                    addReviewWordId(w.id);
+                  }}
                   className="h-4 w-4 cursor-pointer accent-[var(--hero-gold)]"
                 />
                 <span className="text-lg leading-none">{w.emoji}</span>

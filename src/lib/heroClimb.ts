@@ -141,18 +141,15 @@ export function makeLetterQueue(word: string): number[] {
   return shuffled(Array.from({ length: word.length }, (_, i) => i));
 }
 
-// Picks the next word to spell, in priority order: 本週單字 → 加強單字 →
-// 自訂單字 → 標準題庫, avoiding repeats within the run until every tier is
-// exhausted (then starts over).
-export function pickNextTargetWord(
-  weekWords: Word[],
-  reinforcementWords: Word[],
-  customWords: Word[],
-  usedIds: Set<string>,
-): Word {
-  const tiers = [weekWords, reinforcementWords, customWords, PHONICS_WORDS];
-  for (const tier of tiers) {
-    const available = tier.filter((w) => !usedIds.has(w.id));
+// Picks the next word to spell from `pools`, tried in the order given (the
+// caller decides which sources are enabled and in what priority — see
+// heroClimbSettings' word-source setting), avoiding repeats within the run
+// until every pool is exhausted (then starts over). `fallbackPool` is a
+// last-resort safety net — used only if every configured pool is completely
+// empty (e.g. every source got disabled), so the game never gets stuck.
+export function pickNextTargetWord(pools: Word[][], usedIds: Set<string>, fallbackPool: Word[] = PHONICS_WORDS): Word {
+  for (const pool of pools) {
+    const available = pool.filter((w) => !usedIds.has(w.id));
     if (available.length > 0) {
       const picked = available[Math.floor(Math.random() * available.length)];
       usedIds.add(picked.id);
@@ -160,7 +157,42 @@ export function pickNextTargetWord(
     }
   }
   usedIds.clear();
-  const fallback = PHONICS_WORDS[Math.floor(Math.random() * PHONICS_WORDS.length)];
-  usedIds.add(fallback.id);
-  return fallback;
+  const safePool = pools.find((p) => p.length > 0) ?? fallbackPool;
+  const picked = safePool[Math.floor(Math.random() * safePool.length)];
+  usedIds.add(picked.id);
+  return picked;
+}
+
+export interface ReviewPickState {
+  wordsInBlock: number; // how many words drawn since the last forced review pick
+  nextSlot: number; // the (1-indexed) position within the current block that forces a review pick
+}
+
+function randomSlot(): number {
+  return 1 + Math.floor(Math.random() * 10);
+}
+
+export function makeReviewPickState(): ReviewPickState {
+  return { wordsInBlock: 0, nextSlot: randomSlot() };
+}
+
+// Same as pickNextTargetWord, but every ~10 words (at a randomised position
+// within that window) forces a pick from `reviewPool` instead — the words the
+// player explicitly unchecked in settings to see again. Only kicks in while
+// reviewPool is non-empty; falls through to the normal pools otherwise.
+export function pickNextWordWithReview(
+  pools: Word[][],
+  usedIds: Set<string>,
+  reviewPool: Word[],
+  state: ReviewPickState,
+  fallbackPool: Word[] = PHONICS_WORDS,
+): { word: Word; state: ReviewPickState; fromReview: boolean } {
+  const wordsInBlock = state.wordsInBlock + 1;
+  if (reviewPool.length > 0 && wordsInBlock >= state.nextSlot) {
+    const word = reviewPool[Math.floor(Math.random() * reviewPool.length)];
+    usedIds.add(word.id);
+    return { word, state: { wordsInBlock: 0, nextSlot: randomSlot() }, fromReview: true };
+  }
+  const word = pickNextTargetWord(pools, usedIds, fallbackPool);
+  return { word, state: { wordsInBlock, nextSlot: state.nextSlot }, fromReview: false };
 }

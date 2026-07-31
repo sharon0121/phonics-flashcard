@@ -1,19 +1,36 @@
 import { useSyncExternalStore } from 'react';
 import { words as PHONICS_WORDS } from '@/data/words';
+import { sightWords as SIGHT_WORDS } from '@/data/sightWords';
 import type { Word } from '@/lib/types';
 import { useCurriculum, getCurrentWeekKey } from '@/lib/curriculum';
 import { useProgress } from '@/lib/progress';
 
-const MARQUEE_SPEED_KEY = 'hero_climb_marquee_speed';
 const SPEECH_RATE_KEY = 'hero_climb_speech_rate';
 const START_DIFFICULTY_KEY = 'hero_climb_start_difficulty';
+const WORD_SOURCES_KEY = 'hero_climb_word_sources';
 
-export type MarqueeSpeed = 'slow' | 'normal' | 'fast';
 export type SpeechRate = 'slow' | 'normal' | 'fast';
 export type StartDifficulty = 'normal' | 'tier1' | 'tier2' | 'tier3' | 'max';
+export type WordSourceKey = 'thisWeek' | 'reinforcement' | 'custom' | 'phonics' | 'sightWords';
 
-// Seconds per item for the leaderboard marquee scroll.
-export const MARQUEE_SECONDS_PER_ITEM: Record<MarqueeSpeed, number> = { slow: 3, normal: 1.8, fast: 1 };
+export const WORD_SOURCE_LABELS: Record<WordSourceKey, string> = {
+  phonics: '自然發音卡',
+  sightWords: '重要單字卡',
+  thisWeek: '本週單字',
+  custom: '自訂單字',
+  reinforcement: '加強單字',
+};
+// Order the checklist is displayed in — independent of pickNextTargetWord's
+// own priority (curated pools first, big general banks last).
+export const WORD_SOURCE_DISPLAY_ORDER: WordSourceKey[] = [
+  'phonics',
+  'sightWords',
+  'thisWeek',
+  'custom',
+  'reinforcement',
+];
+export const ALL_WORD_SOURCES: WordSourceKey[] = [...WORD_SOURCE_DISPLAY_ORDER];
+
 // Actual rate value passed to SpeechSynthesisUtterance.rate.
 export const SPEECH_RATE_VALUES: Record<SpeechRate, number> = { slow: 0.7, normal: 1.0, fast: 1.3 };
 // Starting difficulty multiplier — each tier corresponds to having completed one word-based speed step.
@@ -25,27 +42,21 @@ export const START_DIFFICULTY_VALUES: Record<StartDifficulty, number> = {
   max: 1.8,
 };
 
-const DEFAULT_MARQUEE_SPEED: MarqueeSpeed = 'normal';
 const DEFAULT_SPEECH_RATE: SpeechRate = 'normal';
 const DEFAULT_START_DIFFICULTY: StartDifficulty = 'normal';
+// Everything enabled by default — matches the old hard-coded cascade that
+// always drew from every pool.
+const DEFAULT_WORD_SOURCES: WordSourceKey[] = [...ALL_WORD_SOURCES];
 
 const EMPTY_WORDS: Word[] = [];
 
 const listeners = new Set<() => void>();
-let cachedMarqueeRaw: string | null = null;
-let cachedMarqueeSpeed: MarqueeSpeed = DEFAULT_MARQUEE_SPEED;
 let cachedSpeechRaw: string | null = null;
 let cachedSpeechRate: SpeechRate = DEFAULT_SPEECH_RATE;
 let cachedStartDiffRaw: string | null = null;
 let cachedStartDiff: StartDifficulty = DEFAULT_START_DIFFICULTY;
-
-function readMarqueeSpeed(): MarqueeSpeed {
-  const raw = localStorage.getItem(MARQUEE_SPEED_KEY);
-  if (raw === cachedMarqueeRaw) return cachedMarqueeSpeed;
-  cachedMarqueeRaw = raw;
-  cachedMarqueeSpeed = raw === 'slow' || raw === 'normal' || raw === 'fast' ? raw : DEFAULT_MARQUEE_SPEED;
-  return cachedMarqueeSpeed;
-}
+let cachedWordSourcesRaw: string | null = null;
+let cachedWordSources: WordSourceKey[] = DEFAULT_WORD_SOURCES;
 
 function readSpeechRate(): SpeechRate {
   const raw = localStorage.getItem(SPEECH_RATE_KEY);
@@ -68,16 +79,6 @@ function notify(): void {
   listeners.forEach((listener) => listener());
 }
 
-export function useMarqueeSpeed(): MarqueeSpeed {
-  return useSyncExternalStore(subscribe, readMarqueeSpeed, () => DEFAULT_MARQUEE_SPEED);
-}
-
-export function setMarqueeSpeed(speed: MarqueeSpeed): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(MARQUEE_SPEED_KEY, speed);
-  notify();
-}
-
 export function useSpeechRate(): SpeechRate {
   return useSyncExternalStore(subscribe, readSpeechRate, () => DEFAULT_SPEECH_RATE);
 }
@@ -93,6 +94,37 @@ function readStartDifficulty(): StartDifficulty {
 
 export function useStartDifficulty(): StartDifficulty {
   return useSyncExternalStore(subscribe, readStartDifficulty, () => DEFAULT_START_DIFFICULTY);
+}
+
+function readWordSources(): WordSourceKey[] {
+  const raw = localStorage.getItem(WORD_SOURCES_KEY);
+  if (raw === cachedWordSourcesRaw) return cachedWordSources;
+  cachedWordSourcesRaw = raw;
+  if (raw == null) {
+    cachedWordSources = DEFAULT_WORD_SOURCES;
+    return cachedWordSources;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const valid = Array.isArray(parsed) ? parsed.filter((k): k is WordSourceKey => ALL_WORD_SOURCES.includes(k as WordSourceKey)) : [];
+    cachedWordSources = valid.length > 0 ? valid : DEFAULT_WORD_SOURCES;
+  } catch {
+    cachedWordSources = DEFAULT_WORD_SOURCES;
+  }
+  return cachedWordSources;
+}
+
+export function useWordSources(): WordSourceKey[] {
+  return useSyncExternalStore(subscribe, readWordSources, () => DEFAULT_WORD_SOURCES);
+}
+
+export function setWordSources(sources: WordSourceKey[]): void {
+  if (typeof window === 'undefined') return;
+  // Never let the game end up with zero sources — that would leave nothing
+  // to draw target words from. Falls back to every source enabled.
+  const safe = sources.length > 0 ? sources : DEFAULT_WORD_SOURCES;
+  localStorage.setItem(WORD_SOURCES_KEY, JSON.stringify(safe));
+  notify();
 }
 
 export function setStartDifficulty(d: StartDifficulty): void {
@@ -118,9 +150,22 @@ export function useThisWeekClimbWords(): Word[] {
   return result.length > 0 ? result : EMPTY_WORDS;
 }
 
-// Words flagged "needs reinforcement" (🔥 加強) in the flashcard progress tracker.
+// Words flagged "needs reinforcement" (🔥 加強) in the flashcard progress
+// tracker — checked across both the phonics bank and sight words, since
+// either kind of card can be flagged from its own browse page.
 export function useReinforcementClimbWords(): Word[] {
   const progress = useProgress();
-  const result = PHONICS_WORDS.filter((w) => progress[w.id]?.needsReinforcement === true);
+  const result = [...PHONICS_WORDS, ...SIGHT_WORDS].filter((w) => progress[w.id]?.needsReinforcement === true);
   return result.length > 0 ? result : EMPTY_WORDS;
+}
+
+// The two big general word banks, exposed here so HeroClimbView doesn't need
+// to reach into @/data directly — keeps every hero-climb word source in one
+// module.
+export function usePhonicsClimbWords(): Word[] {
+  return PHONICS_WORDS;
+}
+
+export function useSightWordsClimb(): Word[] {
+  return SIGHT_WORDS;
 }

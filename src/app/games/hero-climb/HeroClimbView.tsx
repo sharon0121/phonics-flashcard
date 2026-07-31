@@ -3,16 +3,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Word } from '@/lib/types';
-import { useThisWeekClimbWords, useReinforcementClimbWords, useSpeechRate, SPEECH_RATE_VALUES, useStartDifficulty, START_DIFFICULTY_VALUES } from '@/lib/heroClimbSettings';
-import { getUsedWordIds, persistUsedWordIds } from '@/lib/heroClimbUsedWords';
+import {
+  useThisWeekClimbWords,
+  useReinforcementClimbWords,
+  usePhonicsClimbWords,
+  useSightWordsClimb,
+  useWordSources,
+  useSpeechRate,
+  SPEECH_RATE_VALUES,
+  useStartDifficulty,
+  START_DIFFICULTY_VALUES,
+  type WordSourceKey,
+} from '@/lib/heroClimbSettings';
+import { getUsedWordIds, persistUsedWordIds, useReviewWordIds, removeReviewWordId } from '@/lib/heroClimbUsedWords';
 import { useCustomWords } from '@/lib/customWords';
 import {
   generateRows,
   pruneRows,
   makeLetterQueue,
-  pickNextTargetWord,
+  pickNextWordWithReview,
+  makeReviewPickState,
   ROW_SPACING,
   type Platform,
+  type ReviewPickState,
 } from '@/lib/heroClimb';
 import { recordClimbRun, renameClimbRecord, useLastPlayerName } from '@/lib/heroClimbHistory';
 import {
@@ -138,12 +151,35 @@ function PlatformBar({ kind }: { kind: Platform['kind'] }) {
   );
 }
 
-interface LatestRefs {
-  target: Word;
-  filledPositions: boolean[];
+interface WordPoolInputs {
   weekWords: Word[];
   reinforcementWords: Word[];
   customWords: Word[];
+  phonicsWords: Word[];
+  sightWords: Word[];
+}
+
+// Priority order the target word is drawn from — curated pools first, the
+// two big general banks last — independent of the order the settings
+// checklist displays them in. Only pools whose source is enabled are
+// included at all.
+const WORD_POOL_PRIORITY: Array<{ key: WordSourceKey; pick: (p: WordPoolInputs) => Word[] }> = [
+  { key: 'thisWeek', pick: (p) => p.weekWords },
+  { key: 'reinforcement', pick: (p) => p.reinforcementWords },
+  { key: 'custom', pick: (p) => p.customWords },
+  { key: 'phonics', pick: (p) => p.phonicsWords },
+  { key: 'sightWords', pick: (p) => p.sightWords },
+];
+
+function buildWordPools(sources: WordSourceKey[], inputs: WordPoolInputs): Word[][] {
+  return WORD_POOL_PRIORITY.filter((tier) => sources.includes(tier.key)).map((tier) => tier.pick(inputs));
+}
+
+interface LatestRefs {
+  target: Word;
+  filledPositions: boolean[];
+  wordPools: Word[][];
+  reviewPool: Word[];
   speechRateValue: number;
 }
 
@@ -151,20 +187,37 @@ export default function HeroClimbView() {
   const weekWords = useThisWeekClimbWords();
   const reinforcementWords = useReinforcementClimbWords();
   const customWords = useCustomWords();
+  const phonicsWords = usePhonicsClimbWords();
+  const sightWords = useSightWordsClimb();
+  const wordSources = useWordSources();
   const speechRate = useSpeechRate();
   const startDifficulty = useStartDifficulty();
   const lastPlayerName = useLastPlayerName();
+  const reviewIds = useReviewWordIds();
+
+  const wordPools = buildWordPools(wordSources, { weekWords, reinforcementWords, customWords, phonicsWords, sightWords });
+  // Words the player explicitly unchecked in settings to see again — pulled
+  // from the full word universe regardless of which sources are enabled,
+  // since asking to review a word is a more specific signal than the
+  // general source toggles.
+  const reviewPool = [...phonicsWords, ...sightWords, ...customWords].filter((w) => reviewIds.has(w.id));
 
   const usedWordIdsRef = useRef(new Set<string>());
-  const [target, setTarget] = useState<Word>(() =>
-    pickNextTargetWord(weekWords, reinforcementWords, customWords, usedWordIdsRef.current),
-  );
+  const reviewStateRef = useRef<ReviewPickState>(makeReviewPickState());
+  const initialFromReviewRef = useRef(false);
+  const [target, setTarget] = useState<Word>(() => {
+    const result = pickNextWordWithReview(wordPools, usedWordIdsRef.current, reviewPool, reviewStateRef.current);
+    reviewStateRef.current = result.state;
+    initialFromReviewRef.current = result.fromReview;
+    return result.word;
+  });
   // Merge localStorage used-words into the in-memory ref after hydration,
   // then persist back (so the initial word is also recorded).
   useEffect(() => {
     const stored = getUsedWordIds();
     stored.forEach((id) => usedWordIdsRef.current.add(id));
     persistUsedWordIds(usedWordIdsRef.current);
+    if (initialFromReviewRef.current) removeReviewWordId(target.id);
   }, []);
   const outstandingRef = useRef<number[]>(makeLetterQueue(target.word));
   const [filledPositions, setFilledPositions] = useState<boolean[]>(() => new Array(target.word.length).fill(false));
@@ -201,9 +254,9 @@ export default function HeroClimbView() {
 
   // Always-fresh snapshot of state the physics loop needs but shouldn't
   // restart the loop over — read at the moment an event actually happens.
-  const latestRef = useRef<LatestRefs>({ target, filledPositions, weekWords, reinforcementWords, customWords, speechRateValue: SPEECH_RATE_VALUES[speechRate] });
+  const latestRef = useRef<LatestRefs>({ target, filledPositions, wordPools, reviewPool, speechRateValue: SPEECH_RATE_VALUES[speechRate] });
   useEffect(() => {
-    latestRef.current = { target, filledPositions, weekWords, reinforcementWords, customWords, speechRateValue: SPEECH_RATE_VALUES[speechRate] };
+    latestRef.current = { target, filledPositions, wordPools, reviewPool, speechRateValue: SPEECH_RATE_VALUES[speechRate] };
   });
 
   const charXRef = useRef(50);
@@ -239,6 +292,22 @@ export default function HeroClimbView() {
 
   const worldRef = useRef<HTMLDivElement>(null);
   const heroElRef = useRef<HTMLDivElement>(null);
+
+  // Measures the gold-bordered game panel's real rendered height so the
+  // leaderboard sidebar next to it can match it exactly instead of growing
+  // however tall its own row count happens to make it.
+  const gamePanelRef = useRef<HTMLDivElement>(null);
+  const [gamePanelHeight, setGamePanelHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const el = gamePanelRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height;
+      if (height) setGamePanelHeight(Math.round(height));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const finishGame = useCallback(() => {
     if (finishedRef.current) return;
@@ -286,8 +355,15 @@ export default function HeroClimbView() {
     function advanceToNextWord() {
       if (done) return;
       done = true;
-      const { weekWords: w, reinforcementWords: r, customWords: c } = latestRef.current;
-      const nextWord = pickNextTargetWord(w, r, c, usedWordIdsRef.current);
+      const result = pickNextWordWithReview(
+        latestRef.current.wordPools,
+        usedWordIdsRef.current,
+        latestRef.current.reviewPool,
+        reviewStateRef.current,
+      );
+      reviewStateRef.current = result.state;
+      if (result.fromReview) removeReviewWordId(result.word.id);
+      const nextWord = result.word;
       persistUsedWordIds(usedWordIdsRef.current);
       setTarget(nextWord);
       outstandingRef.current = makeLetterQueue(nextWord.word);
@@ -478,18 +554,20 @@ export default function HeroClimbView() {
         }
 
         const standing = restingOnRef.current;
-        if (standing && standing.letterIndex !== undefined && !latestRef.current.filledPositions[standing.letterIndex]) {
-          collectLetter(standing.letterIndex);
-        }
-        // Items are triggered only when the hero's centre is within 1% of the
-        // item's centre (platform midpoint), so walking past the edge of a
-        // platform never accidentally picks up a skull or heart.
+        // Letters and items alike are only triggered once the hero's centre
+        // is within 1% of the platform's own centre — so walking past the
+        // edge of a platform never accidentally picks up a letter, skull, or
+        // heart just from resting somewhere near it.
+        const centredOnStanding = !!standing && Math.abs(charXRef.current - (standing.x + standing.width / 2)) < 1;
         if (
           standing &&
-          standing.item !== undefined &&
-          !collectedItemIdsRef.current.has(standing.id) &&
-          Math.abs(charXRef.current - (standing.x + standing.width / 2)) < 1
+          centredOnStanding &&
+          standing.letterIndex !== undefined &&
+          !latestRef.current.filledPositions[standing.letterIndex]
         ) {
+          collectLetter(standing.letterIndex);
+        }
+        if (standing && centredOnStanding && standing.item !== undefined && !collectedItemIdsRef.current.has(standing.id)) {
           collectItem(standing);
         }
 
@@ -626,8 +704,12 @@ export default function HeroClimbView() {
     maxDepthRef.current = 0;
     wordsCompletedRef.current = 0;
     usedWordIdsRef.current = new Set(getUsedWordIds());
+    reviewStateRef.current = makeReviewPickState();
 
-    const nextWord = pickNextTargetWord(weekWords, reinforcementWords, customWords, usedWordIdsRef.current);
+    const result = pickNextWordWithReview(wordPools, usedWordIdsRef.current, reviewPool, reviewStateRef.current);
+    reviewStateRef.current = result.state;
+    if (result.fromReview) removeReviewWordId(result.word.id);
+    const nextWord = result.word;
     persistUsedWordIds(usedWordIdsRef.current);
     outstandingRef.current = makeLetterQueue(nextWord.word);
     const fresh = new Array(nextWord.word.length).fill(false);
@@ -706,9 +788,12 @@ export default function HeroClimbView() {
         </p>
 
         <div className="mt-2 flex flex-col gap-2 sm:mt-6 sm:gap-6 sm:flex-row">
-          <LeaderboardPanel />
+          <LeaderboardPanel matchHeight={gamePanelHeight} />
 
-          <div className="relative flex-1 rounded-xl border-2 border-[var(--hero-gold)] bg-gradient-to-br from-[#0a0118] via-[#12042a] to-[#01030f] p-4">
+          <div
+            ref={gamePanelRef}
+            className="relative flex-1 rounded-xl border-2 border-[var(--hero-gold)] bg-gradient-to-br from-[#0a0118] via-[#12042a] to-[#01030f] p-4"
+          >
             <div className="flex w-full items-center justify-between text-sm font-bold text-[var(--hero-gold)]">
               <span>
                 {'❤️'.repeat(Math.max(lives, 0))}
