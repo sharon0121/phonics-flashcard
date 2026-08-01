@@ -90,47 +90,6 @@ export default function PixelInvadersSettingsPage() {
         </div>
 
         <div className="space-y-6">
-          {/* Range selection */}
-          <section className="bg-gray-900/80 rounded-2xl p-5 border border-gray-700">
-            <h2 className="text-sm font-bold text-gray-400 font-mono mb-1 uppercase tracking-wide">數字範圍（可複選）</h2>
-            <p className="text-xs text-gray-500 font-mono mb-3">
-              從最小開始，連答 10 題升一層 → 目前最高層：{sortedRanges[sortedRanges.length-1]} 以內
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {[10,20,30,40,60,80,100].map(r => (
-                <button key={r} onClick={() => toggleRange(r)} className={checkCls(settings.ranges.includes(r))}>
-                  {r} 以內
-                </button>
-              ))}
-            </div>
-            {sortedRanges.length > 1 && (
-              <p className="mt-2 text-[10px] text-gray-600 font-mono">
-                進度：{sortedRanges.map((r,i)=>`第${i+1}層：${r}以內`).join(' → ')}
-              </p>
-            )}
-          </section>
-
-          {/* Operand count */}
-          <section className="bg-gray-900/80 rounded-2xl p-5 border border-gray-700">
-            <h2 className="text-sm font-bold text-gray-400 font-mono mb-1 uppercase tracking-wide">數字個數（可複選）</h2>
-            <p className="text-xs text-gray-500 font-mono mb-3">從最少開始，連答 10 題升一層</p>
-            <div className="flex gap-2 flex-wrap">
-              {[2,3,4,5].map(c => (
-                <button key={c} onClick={() => toggleCount(c)} className={checkCls(settings.operandCounts.includes(c))}>
-                  {c} 個數字
-                  <div className="text-[9px] font-normal opacity-60">
-                    {c===2?'a ± b':c===3?'a ± b ± c':c===4?'a ± b ± c ± d':'a ± b ± c ± d ± e'}
-                  </div>
-                </button>
-              ))}
-            </div>
-            {sortedCounts.length > 1 && (
-              <p className="mt-2 text-[10px] text-gray-600 font-mono">
-                進度：{sortedCounts.map((c,i)=>`第${i+1}層：${c}個數字`).join(' → ')}
-              </p>
-            )}
-          </section>
-
           {/* Combat duration */}
           <section className="bg-gray-900/80 rounded-2xl p-5 border border-gray-700">
             <h2 className="text-sm font-bold text-gray-400 font-mono mb-3 uppercase tracking-wide">戰鬥時間</h2>
@@ -171,6 +130,47 @@ export default function PixelInvadersSettingsPage() {
                 </button>
               ))}
             </div>
+          </section>
+
+          {/* Range selection */}
+          <section className="bg-gray-900/80 rounded-2xl p-5 border border-gray-700">
+            <h2 className="text-sm font-bold text-gray-400 font-mono mb-1 uppercase tracking-wide">數學範圍（可複選）</h2>
+            <p className="text-xs text-gray-500 font-mono mb-3">
+              從最小開始，連答 10 題升一層 → 目前最高層：{sortedRanges[sortedRanges.length-1]} 以內
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[10,20,30,40,60,80,100].map(r => (
+                <button key={r} onClick={() => toggleRange(r)} className={checkCls(settings.ranges.includes(r))}>
+                  {r} 以內
+                </button>
+              ))}
+            </div>
+            {sortedRanges.length > 1 && (
+              <p className="mt-2 text-[10px] text-gray-600 font-mono">
+                進度：{sortedRanges.map((r,i)=>`第${i+1}層：${r}以內`).join(' → ')}
+              </p>
+            )}
+          </section>
+
+          {/* Operand count */}
+          <section className="bg-gray-900/80 rounded-2xl p-5 border border-gray-700">
+            <h2 className="text-sm font-bold text-gray-400 font-mono mb-1 uppercase tracking-wide">數學個數（可複選）</h2>
+            <p className="text-xs text-gray-500 font-mono mb-3">從最少開始，連答 10 題升一層</p>
+            <div className="flex gap-2 flex-wrap">
+              {[2,3,4,5].map(c => (
+                <button key={c} onClick={() => toggleCount(c)} className={checkCls(settings.operandCounts.includes(c))}>
+                  {c} 個數字
+                  <div className="text-[9px] font-normal opacity-60">
+                    {c===2?'a ± b':c===3?'a ± b ± c':c===4?'a ± b ± c ± d':'a ± b ± c ± d ± e'}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {sortedCounts.length > 1 && (
+              <p className="mt-2 text-[10px] text-gray-600 font-mono">
+                進度：{sortedCounts.map((c,i)=>`第${i+1}層：${c}個數字`).join(' → ')}
+              </p>
+            )}
           </section>
 
           {/* English phases — only shown when quizMode involves English */}

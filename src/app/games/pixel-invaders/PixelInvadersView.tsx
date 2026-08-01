@@ -1096,7 +1096,7 @@ export default function PixelInvadersView() {
       <div ref={canvasAreaRef} className="relative w-full" style={{aspectRatio:`${CW}/${CH}`}}>
         <canvas ref={canvasRef} width={CW} height={CH}
           className="w-full h-full rounded-2xl border-2 border-gray-700 touch-none block"
-          onMouseMove={e=>onPtr(e.clientX)}
+          onPointerMove={e=>{ if(e.pointerType==='mouse') onPtr(e.clientX); }}
           onTouchStart={e=>{
             if(gs.current.phase!=='combat') return;
             const r=canvasRef.current!.getBoundingClientRect();
