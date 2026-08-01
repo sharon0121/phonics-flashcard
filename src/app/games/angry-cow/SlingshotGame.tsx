@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { playCollectSound, playErrorSound, playDingSound } from '@/lib/sound';
@@ -35,8 +36,8 @@ const POWER_TICKS = [500, 600, 700, 800, 900, 1000];
 // the marker/labels travel within [INSET%, 100-INSET%], not the full width.
 const SHOOT_BAR_INSET_PCT = 4;
 const OSCILLATE_PERIOD_MS = 3200;
-const DISTANCE_TOLERANCE = 50;
-const DISTANCE_MIN_GAP = 110;
+const DISTANCE_TOLERANCE = 100;
+const DISTANCE_MIN_GAP = 210;
 
 function currentPowerValue(elapsedMs: number): number {
   const half = OSCILLATE_PERIOD_MS / 2;
@@ -49,7 +50,7 @@ function currentPowerValue(elapsedMs: number): number {
 // DISTANCE_MIN_GAP apart so their +-DISTANCE_TOLERANCE hit windows can
 // never overlap.
 function assignDistances(): number[] {
-  const buffer = 40;
+  const buffer = 20;
   const lo = POWER_MIN + buffer;
   const hi = POWER_MAX - buffer;
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -64,139 +65,225 @@ function assignDistances(): number[] {
 }
 
 // --- World layout -------------------------------------------------------
-// Lanes get a fresh X position each round (not fixed slots) so the 3
-// targets show up in varied left/right arrangements — just kept far
-// enough apart that their boards/hit-zones never overlap.
-// Kept within what the camera can actually see even for the nearest lane
-// (worst case: 500m/z=3 gives ~3.47 world units of visible half-width at
-// this fov/aspect) — ±2.3 leaves margin for the crate's own half-width,
-// which grew along with the +150% animal/crate size bump.
-const LANE_X_MIN = -2.3;
-const LANE_X_MAX = 2.3;
-const LANE_X_MIN_GAP = 1.8;
+// Centre lane at 50% of screen width; left/right lanes ±20% away.
+// Shuffled each round so the correct-answer lane appears in a random column.
+// World-space X is computed per-lane from its Z depth + screen fraction
+// via camera unprojection (screenFracToWorldX).
+const LANE_FRACS = [0.3, 0.5, 0.7] as const;
 
-function assignLaneX(): number[] {
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const values = [0, 1, 2].map(() => LANE_X_MIN + Math.random() * (LANE_X_MAX - LANE_X_MIN));
-    values.sort((a, b) => a - b);
-    if (values[1] - values[0] >= LANE_X_MIN_GAP && values[2] - values[1] >= LANE_X_MIN_GAP) {
-      const order = [0, 1, 2].sort(() => Math.random() - 0.5);
-      return order.map((i) => values[i]);
-    }
-  }
-  return [-2.2, 0, 2.2];
+function assignLaneFracs(): number[] {
+  return ([...LANE_FRACS] as number[]).sort(() => Math.random() - 0.5);
+}
+
+// Returns the world-space X coordinate that will appear at the given
+// horizontal screen fraction (0=left edge, 1=right edge) for an object
+// at worldZ depth, accounting for the camera's perspective and pose.
+function screenFracToWorldX(
+  camera: THREE.PerspectiveCamera,
+  frac: number,
+  worldZ: number,
+): number {
+  const ndcX = frac * 2 - 1;
+  const near = new THREE.Vector3(ndcX, 0, -1).unproject(camera);
+  const far  = new THREE.Vector3(ndcX, 0,  1).unproject(camera);
+  const dir  = far.clone().sub(near).normalize();
+  const t    = (worldZ - near.z) / dir.z;
+  return near.x + t * dir.x;
 }
 
 const GROUND_Y = 0;
-const CRATE_SIZE = 0.9 * 1.5; // +150% per user request
-const CRATE_Y = GROUND_Y + CRATE_SIZE / 2;
-const CRATE_TOP_Y = CRATE_Y + CRATE_SIZE / 2;
+const CRATE_SIZE = 0.9 * 0.75; // per-crate world size = 0.675 (50% of original)
+// Two BoxGeometry crates stacked: exact centres, no transparent-padding gaps.
+const BOTTOM_CRATE_Y = GROUND_Y + CRATE_SIZE / 2;  // = 0.675 (box centre)
+const CRATE_Y        = GROUND_Y + CRATE_SIZE;       // = 1.35  (physics body centre of 2-stack)
+const CRATE_VISUAL_TOP_Y = GROUND_Y + CRATE_SIZE * 2; // = 2.7  (exact top of 2-stack)
 const LAUNCH_POS = new THREE.Vector3(0, 1.0, -1.3);
 
-// Glossy, bright projectile colors (red / true green / navy) picked at
-// random per shot — avoids the flat dark placeholder color.
-const PROJECTILE_COLORS = [0xe63946, 0x00a651, 0x1f3a68];
+const PROJECTILE_COLOR = 0xff1a1a; // bright red, glossy
 
-// Crate sprite (billboard) — user-provided art, swapped to the "burst
-// open" frame on hit, same idea as the animal's idle/fallen swap. World
-// size keeps CRATE_SIZE as the reference height so nothing else moves.
-const CRATE_IDLE_SRC = '/games/angry-cow/crate-idle.png';
-const CRATE_DESTROYED_SRC = '/games/angry-cow/crate-destroyed.png';
-const CRATE_IDLE_PX = { w: 321, h: 346 };
-const CRATE_DESTROYED_PX = { w: 233, h: 252 };
-const CRATE_SCALE = CRATE_SIZE / CRATE_IDLE_PX.h;
+// Procedural wooden-crate texture — drawn on a canvas so there is zero
+// transparent padding and BoxGeometry cubes stack perfectly flush.
+function createCrateBoxTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  const ctx = cv.getContext('2d')!;
 
-// Target animal sprite (billboard) — test asset provided by the user, cut
-// from a 5-frame voxel-giraffe sheet. World size is derived from the
-// idle frame's pixel height so the fallen frame (a different aspect
-// ratio) keeps the same real-world scale instead of stretching to fit.
-const ANIMAL_IDLE_SRC = '/games/angry-cow/animal-idle.png';
-const ANIMAL_FALLEN_SRC = '/games/angry-cow/animal-fallen.png';
-const ANIMAL_IDLE_PX = { w: 98, h: 254 };
-const ANIMAL_FALLEN_PX = { w: 343, h: 126 };
-const ANIMAL_WORLD_HEIGHT = 1.1 * 1.5; // +150% per user request
-const ANIMAL_SCALE = ANIMAL_WORLD_HEIGHT / ANIMAL_IDLE_PX.h;
-const ANIMAL_IDLE_Y = CRATE_TOP_Y + ANIMAL_WORLD_HEIGHT / 2;
+  // Wood base
+  ctx.fillStyle = '#b8843a';
+  ctx.fillRect(0, 0, S, S);
+
+  // Subtle horizontal grain
+  ctx.strokeStyle = 'rgba(80,45,5,0.12)';
+  ctx.lineWidth = 1;
+  for (let y = 10; y < S; y += 16) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y); ctx.stroke();
+  }
+
+  // Board-divider lines
+  ctx.strokeStyle = '#7a5010';
+  ctx.lineWidth = 3;
+  [S * 0.34, S * 0.66].forEach(v => {
+    ctx.beginPath(); ctx.moveTo(0, v); ctx.lineTo(S, v); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(v, 0); ctx.lineTo(v, S); ctx.stroke();
+  });
+
+  // X brace
+  ctx.strokeStyle = '#5c3608';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(S * 0.07, S * 0.07); ctx.lineTo(S * 0.93, S * 0.93);
+  ctx.moveTo(S * 0.93, S * 0.07); ctx.lineTo(S * 0.07, S * 0.93);
+  ctx.stroke();
+
+  // Outer frame
+  ctx.strokeStyle = '#4a2a06';
+  ctx.lineWidth = 9;
+  ctx.strokeRect(4, 4, S - 8, S - 8);
+
+  // Corner nail dots
+  ctx.fillStyle = '#3a2006';
+  [[0.11, 0.11], [0.89, 0.11], [0.11, 0.89], [0.89, 0.89]].forEach(([fx, fy]) => {
+    ctx.beginPath(); ctx.arc(fx * S, fy * S, 5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  return new THREE.CanvasTexture(cv);
+}
+
+// Giraffe is now a procedural 3D model (no PNG sprite). The unit-height
+// model spans y=0 (feet) to y≈1.0 (horns). Scale × ANIMAL_WORLD_HEIGHT to
+// get the desired world size; dScale (0.9–1.1) adjusts per distance lane.
+const ANIMAL_WORLD_HEIGHT = 1.1 * 1.5; // world height at dScale=1.0
+
+// Creates a low-poly 3D giraffe centred at its feet (y=0 in local space).
+// The group is scaled to ANIMAL_WORLD_HEIGHT × dScale in buildLanes.
+function createGiraffe3D(): THREE.Group {
+  const grp = new THREE.Group();
+
+  const mk = (
+    geo: THREE.BufferGeometry,
+    mat: THREE.MeshStandardMaterial,
+    x: number, y: number, z: number,
+    rx = 0, ry = 0, rz = 0,
+  ) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz);
+    m.castShadow = true;
+    grp.add(m);
+  };
+
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xFFCC00, roughness: 0.45, metalness: 0.05, emissive: 0xFFCC00, emissiveIntensity: 0.08 });
+  const spotMat = new THREE.MeshStandardMaterial({ color: 0xA0420A, roughness: 0.6  });
+  const eyeMat  = new THREE.MeshStandardMaterial({ color: 0x110808, roughness: 0.9  });
+  const hornMat = new THREE.MeshStandardMaterial({ color: 0xE8A020, roughness: 0.55 });
+  const hoofMat = new THREE.MeshStandardMaterial({ color: 0x3A2008, roughness: 0.9  });
+
+  // Hooves + Legs (4×)
+  const hoofGeo = new THREE.BoxGeometry(0.075, 0.035, 0.085);
+  const legGeo  = new THREE.BoxGeometry(0.065, 0.265, 0.065);
+  for (const [lx, lz] of [[-0.10, 0.09], [0.10, 0.09], [-0.10, -0.09], [0.10, -0.09]] as [number,number][]) {
+    mk(hoofGeo, hoofMat, lx, 0.017,  lz);
+    mk(legGeo,  bodyMat, lx, 0.168, lz);
+  }
+
+  // Body
+  mk(new THREE.BoxGeometry(0.34, 0.22, 0.26), bodyMat, 0, 0.40, 0);
+  // Body spots
+  mk(new THREE.BoxGeometry(0.10, 0.10, 0.27), spotMat, -0.09, 0.43,  0);
+  mk(new THREE.BoxGeometry(0.08, 0.08, 0.27), spotMat,  0.10, 0.37,  0);
+  mk(new THREE.BoxGeometry(0.07, 0.11, 0.27), spotMat, -0.03, 0.32,  0);
+
+  // Neck (slightly tilted forward)
+  mk(new THREE.BoxGeometry(0.11, 0.36, 0.11), bodyMat, 0.04, 0.67, 0.01, 0, 0, -0.06);
+  // Neck spots
+  mk(new THREE.BoxGeometry(0.12, 0.12, 0.12), spotMat, 0.03, 0.59, 0.01);
+  mk(new THREE.BoxGeometry(0.11, 0.10, 0.11), spotMat, 0.05, 0.74, 0.01);
+
+  // Head
+  mk(new THREE.BoxGeometry(0.17, 0.13, 0.14), bodyMat, 0.03, 0.87, 0.01);
+  // Muzzle
+  mk(new THREE.BoxGeometry(0.11, 0.09, 0.09), bodyMat, 0.03, 0.81, 0.10);
+  // Nostrils
+  mk(new THREE.BoxGeometry(0.025, 0.015, 0.02), spotMat, -0.01, 0.786, 0.154);
+  mk(new THREE.BoxGeometry(0.025, 0.015, 0.02), spotMat,  0.07, 0.786, 0.154);
+  // Eyes
+  const eyeGeo = new THREE.SphereGeometry(0.018, 8, 6);
+  mk(eyeGeo, eyeMat, -0.05 + 0.03, 0.88, 0.08);
+  mk(eyeGeo, eyeMat,  0.05 + 0.03, 0.88, 0.08);
+  // Ears
+  mk(new THREE.BoxGeometry(0.04, 0.065, 0.025), bodyMat, -0.10 + 0.03, 0.92, 0.01);
+  mk(new THREE.BoxGeometry(0.04, 0.065, 0.025), bodyMat,  0.10 + 0.03, 0.92, 0.01);
+
+  // Ossicones (horns) — tip at y≈1.0
+  const hornGeo = new THREE.CylinderGeometry(0.010, 0.020, 0.075, 6);
+  mk(hornGeo, hornMat, -0.03 + 0.03, 0.975, 0.005);
+  mk(hornGeo, hornMat,  0.03 + 0.03, 0.975, 0.005);
+
+  // Tail
+  mk(new THREE.CylinderGeometry(0.015, 0.010, 0.13, 5), bodyMat, 0, 0.39, -0.155, 0.4, 0, 0);
+
+  return grp;
+}
 const FLIGHT_MS = 850;
 const RESULT_PAUSE_MS = 1000;
 const MISS_PAUSE_MS = 550;
 
-// game-meters (500-1000) -> world Z depth (3-18)
+// game-meters (500-1000) -> world Z depth (3-7)
+// Compressed range keeps all targets visually close (matching reference
+// image proportions) while the power-bar mechanic still spans the full range.
 function distanceToZ(meters: number): number {
-  return 3 + ((meters - POWER_MIN) / (POWER_MAX - POWER_MIN)) * 15;
+  return 3 + ((meters - POWER_MIN) / (POWER_MAX - POWER_MIN)) * 4;
 }
 
-// Decorative drifting clouds — cut out from the user-provided sprite sheet,
-// each looping left-to-right at its own size/speed/height for a light
-// parallax feel ("藍天白雲" — clear sunny sky). Purely visual, no gameplay
-// effect. ?v=2 cache-busts the asset URL: browsers/devtools were caching
-// the pre-whitened (blue-tinted) PNGs across edits at the same filename.
-const CLOUD_ASSET_VERSION = 3;
-const CLOUD_SRCS = ['/games/angry-cow/cloud-1.png', '/games/angry-cow/cloud-2.png', '/games/angry-cow/cloud-3.png'].map(
-  (src) => `${src}?v=${CLOUD_ASSET_VERSION}`,
-);
-const CLOUD_SPEED_FACTOR = 5; // 20% speed = 5x duration
-// Baseline width or larger only (150%-250%), lots of them so the sky
-// reliably reads as 30-45% cloud coverage, never below 30%. `top` is a %
-// of the sky strip itself, so 0-95 already means "anywhere in the sky" —
-// stratified into bands below so height is never clustered at one level.
-const CLOUD_BASE_WIDTH = 140;
-const CLOUD_HEIGHT_BANDS = [
-  [0, 16],
-  [16, 32],
-  [32, 48],
-  [48, 64],
-  [64, 80],
-  [80, 95],
-];
+// Two clean cloud PNG assets; each cloud picks one at random.
+const CLOUD_SRCS = ['/games/angry-cow/cloud-a.webp', '/games/angry-cow/cloud-b.jpg'];
 
-// Every cloud travels the same -25vw..125vw path (150vw total). Clouds
-// sharing a height band ("lane") all move at nearly the same speed and
-// are spaced evenly around that lane's own cycle, so a faster cloud can
-// never drift close enough to catch up on a slower one — the only way to
-// reliably cap overlap at ~20% when clouds drift independently forever,
-// rather than relying on pure randomness which drifts into full overlap
-// over a long enough time.
 interface CloudSpec {
-  src: string;
-  top: number;
-  width: number;
-  duration: number;
-  delay: number;
+  srcIndex: number; // 0 = cloud-1.png, 1 = cloud-2.png
+  top: number;      // % from top within sky strip
+  width: number;    // display width in px
+  duration: number; // full-cross drift duration in seconds
+  delay: number;    // negative = already mid-flight on page load
 }
 
 function generateClouds(): CloudSpec[] {
-  const perLane = 2 + Math.floor(Math.random() * 2); // 2-3 clouds per lane
+  // 7 vertical bands × 2 clouds each = 14 total, no overlaps.
+  // Within each band the two clouds are phase-shifted by exactly 0.5 (half
+  // period), so they stay ~75 vw apart at all times and never collide.
   const clouds: CloudSpec[] = [];
-  CLOUD_HEIGHT_BANDS.forEach(([bandLo, bandHi]) => {
-    const laneDuration = (32 + Math.random() * 24) * CLOUD_SPEED_FACTOR;
-    const slice = 1 / perLane;
-    for (let i = 0; i < perLane; i++) {
-      // Jitter stays well within its slot (<=20% of the slot width) so
-      // neighbors in the same lane can't end up more than ~20% overlapped.
-      const jitter = (Math.random() - 0.5) * slice * 0.2;
-      const phase = i * slice + jitter;
+  const NUM_BANDS = 7;
+  for (let band = 0; band < NUM_BANDS; band++) {
+    const top = 5 + (band / (NUM_BANDS - 1)) * 80;
+    const duration = (65 + Math.random() * 55) * 5 / 0.3 / 1.3 / 1.3 / 1.3 / 1.3;
+    const phase0 = Math.random(); // random start phase for first cloud in band
+    for (let slot = 0; slot < 2; slot++) {
+      const phase = slot === 0 ? phase0 : (phase0 + 0.5) % 1;
       clouds.push({
-        src: CLOUD_SRCS[Math.floor(Math.random() * CLOUD_SRCS.length)],
-        top: bandLo + Math.random() * (bandHi - bandLo),
-        width: CLOUD_BASE_WIDTH * (1.5 + Math.random()), // 150%-250% of baseline
-        duration: laneDuration,
-        delay: -phase * laneDuration,
+        srcIndex: Math.floor(Math.random() * CLOUD_SRCS.length),
+        top: top + (Math.random() - 0.5) * 3,
+        width: Math.round((252 + Math.floor(Math.random() * 204)) * 0.3),
+        duration,
+        delay: -(phase * duration),
       });
     }
-  });
+  }
   return clouds;
 }
 
+
 interface LaneObjects {
-  crateMesh: THREE.Sprite;
-  targetMesh: THREE.Sprite;
+  bottomCrateMesh: THREE.Mesh;  // lower crate — BoxGeometry, no transparent padding
+  crateMesh: THREE.Mesh;        // upper crate — real 3D rotation on hit
+  targetMesh: THREE.Group;      // giraffe — procedural 3D model, feet at y=0 in local space
   crateBody: CANNON.Body;
   targetBody: CANNON.Body;
   distanceM: number;
   x: number;
   z: number;
   inWorld: boolean;
+  distanceScaleFactor: number; // 0.9 at 500M → 1.1 at 1000M
+  animalCenterY: number;       // world Y of physics body centre (for projectile landing)
 }
 
 // 'resolving' covers the settle/pause window after a shot lands (hit or
@@ -214,6 +301,7 @@ export default function SlingshotGame({
   startLives = 5,
 }: SlingshotGameProps) {
   const [clouds] = useState(() => generateClouds());
+  const [cloudUrls, setCloudUrls] = useState<string[]>([]);
   const [round, setRound] = useState<SlingshotRound | null>(() => makeRound());
   const [lives, setLives] = useState(startLives);
   const [score, setScore] = useState(0);
@@ -235,6 +323,12 @@ export default function SlingshotGame({
   const containerRef = useRef<HTMLDivElement>(null);
   const powerFillRef = useRef<HTMLDivElement>(null);
   const powerLabelRef = useRef<HTMLDivElement>(null);
+  const skyDistanceRef = useRef<HTMLDivElement>(null);
+  // Raw client coords of the initial pointerdown — used to aim the ball at
+  // exactly where the user clicked rather than at the lane's centre X.
+  const clickClientRef = useRef<{ x: number; y: number } | null>(null);
+  // Procedural crate texture (created once, shared across all crate meshes).
+  const crateBoxTextureRef = useRef<THREE.CanvasTexture | null>(null);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -242,10 +336,7 @@ export default function SlingshotGame({
   const worldRef = useRef<CANNON.World | null>(null);
   const lanesRef = useRef<LaneObjects[]>([]);
   const projectileRef = useRef<THREE.Mesh | null>(null);
-  const idleTextureRef = useRef<THREE.Texture | null>(null);
-  const fallenTextureRef = useRef<THREE.Texture | null>(null);
-  const crateIdleTextureRef = useRef<THREE.Texture | null>(null);
-  const crateDestroyedTextureRef = useRef<THREE.Texture | null>(null);
+  const ballBodyRef   = useRef<CANNON.Body | null>(null);
 
   const roundRef = useRef(round);
   const livesRef = useRef(lives);
@@ -266,8 +357,77 @@ export default function SlingshotGame({
   const pendingAdvanceAtRef = useRef(0);
   const pendingAdvanceKindRef = useRef<'none' | 'nextRound' | 'gameOver'>('none');
 
+  // Load cloud images and remove white background.
+  // If the image already has an alpha channel (e.g. WebP with transparency),
+  // use it as-is. Otherwise flood-fill from 4 corners with a very tight
+  // threshold (252) so only near-pure-white background is erased — never
+  // the cloud's own bright highlight areas.
+  useEffect(() => {
+    let loaded = 0;
+    const urls: string[] = new Array(CLOUD_SRCS.length);
+    CLOUD_SRCS.forEach((src, idx) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const cv = document.createElement('canvas');
+        cv.width = img.naturalWidth;
+        cv.height = img.naturalHeight;
+        const ctx = cv.getContext('2d')!;
+        ctx.drawImage(img, 0, 0);
+        const id = ctx.getImageData(0, 0, cv.width, cv.height);
+        const { data, width, height } = id;
+
+        // Check if image already has transparency — if so skip processing.
+        let hasAlpha = false;
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] < 255) { hasAlpha = true; break; }
+        }
+
+        if (!hasAlpha) {
+          // Flood-fill from all 4 corners. Only spread through pixels where
+          // every channel ≥ 252 (essentially pure white background). This
+          // stops immediately at any cloud edge or highlight gradient.
+          const visited = new Uint8Array(width * height);
+          const stack: number[] = [];
+          for (const [cx, cy] of [[0,0],[width-1,0],[0,height-1],[width-1,height-1]] as [number,number][]) {
+            const si = cy * width + cx;
+            if (!visited[si]) { visited[si] = 1; stack.push(cx, cy); }
+          }
+          while (stack.length > 0) {
+            const py = stack.pop()!;
+            const px = stack.pop()!;
+            const di = (py * width + px) * 4;
+            if (data[di] < 252 || data[di + 1] < 252 || data[di + 2] < 252) continue;
+            data[di + 3] = 0;
+            for (const [nx, ny] of [[px-1,py],[px+1,py],[px,py-1],[px,py+1]] as [number,number][]) {
+              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                const ni = ny * width + nx;
+                if (!visited[ni]) { visited[ni] = 1; stack.push(nx, ny); }
+              }
+            }
+          }
+          ctx.putImageData(id, 0, 0);
+        }
+
+        urls[idx] = cv.toDataURL('image/png');
+        if (++loaded === CLOUD_SRCS.length) setCloudUrls([...urls]);
+      };
+      img.src = src;
+    });
+  }, []);
+
   useEffect(() => {
     roundRef.current = round;
+  }, [round]);
+
+  // Speak the prompt whenever a new round starts.
+  useEffect(() => {
+    if (!round?.spokenText) return;
+    const utt = new SpeechSynthesisUtterance(round.spokenText);
+    utt.lang = 'en-US';
+    utt.rate = 0.85;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utt);
   }, [round]);
   useEffect(() => {
     livesRef.current = lives;
@@ -282,13 +442,19 @@ export default function SlingshotGame({
     const world = worldRef.current;
     if (!scene || !world) return;
     lanesRef.current.forEach((lane) => {
-      scene.remove(lane.crateMesh, lane.targetMesh);
+      scene.remove(lane.bottomCrateMesh, lane.crateMesh, lane.targetMesh);
       if (lane.inWorld) {
         world.removeBody(lane.crateBody);
         world.removeBody(lane.targetBody);
       }
     });
     lanesRef.current = [];
+    // Remove ball physics body and hide mesh from previous round.
+    if (ballBodyRef.current) {
+      world.removeBody(ballBodyRef.current);
+      ballBodyRef.current = null;
+    }
+    if (projectileRef.current) projectileRef.current.visible = false;
   }, []);
 
   // Builds fresh lane crate+target meshes/bodies for the current round,
@@ -298,40 +464,64 @@ export default function SlingshotGame({
   // own while the player is aiming).
   const buildLanes = useCallback(() => {
     const scene = sceneRef.current;
-    if (!scene) return;
+    const camera = cameraRef.current;
+    if (!scene || !camera) return;
     clearLanes();
 
     const distances = assignDistances();
-    const xs = assignLaneX();
-    const idleHeight = ANIMAL_IDLE_PX.h * ANIMAL_SCALE;
-    const idleWidth = ANIMAL_IDLE_PX.w * ANIMAL_SCALE;
-    const targetY = CRATE_TOP_Y + idleHeight / 2;
-    const crateIdleHeight = CRATE_IDLE_PX.h * CRATE_SCALE;
-    const crateIdleWidth = CRATE_IDLE_PX.w * CRATE_SCALE;
+    const fracs = assignLaneFracs();
 
-    lanesRef.current = xs.map((x, i) => {
-      const z = distanceToZ(distances[i]);
+    // Shared BoxGeometry for all crates — exact cube, zero padding issues.
+    const crateGeo = new THREE.BoxGeometry(CRATE_SIZE, CRATE_SIZE, CRATE_SIZE);
 
-      const crateMesh = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: crateIdleTextureRef.current, transparent: true }),
+    lanesRef.current = fracs.map((frac, i) => {
+      const distanceM = distances[i];
+      const z = distanceToZ(distanceM);
+      const x = screenFracToWorldX(camera, frac, z);
+
+      // Animal scale: 90% at 500 M, 100% at 750 M, 110% at 1000 M.
+      const dScale = 0.9 + (distanceM - 500) / 500 * 0.2;
+
+      // --- Bottom crate (BoxGeometry) ---
+      // Center sits exactly at BOTTOM_CRATE_Y = CRATE_SIZE/2, so its bottom
+      // face is flush with GROUND_Y and its top face is at CRATE_SIZE.
+      const crateTex = crateBoxTextureRef.current;
+      const bottomCrateMesh = new THREE.Mesh(
+        crateGeo,
+        new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.85, metalness: 0 }),
       );
-      crateMesh.scale.set(crateIdleWidth, crateIdleHeight, 1);
-      crateMesh.position.set(x, CRATE_Y, z);
+      bottomCrateMesh.castShadow = true;
+      bottomCrateMesh.position.set(x, BOTTOM_CRATE_Y, z);
+      scene.add(bottomCrateMesh);
+
+      // --- Top crate (BoxGeometry) ---
+      // Center at CRATE_SIZE * 1.5, bottom face flush with bottom crate top.
+      const crateMesh = new THREE.Mesh(
+        crateGeo,
+        new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.85, metalness: 0 }),
+      );
+      crateMesh.castShadow = true;
+      crateMesh.position.set(x, CRATE_SIZE * 1.5, z);
       scene.add(crateMesh);
 
-      const targetMesh = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: idleTextureRef.current, transparent: true }),
-      );
-      targetMesh.scale.set(idleWidth, idleHeight, 1);
-      targetMesh.position.set(x, targetY, z);
+      // --- 3D Giraffe (procedural Group, local y=0 = feet, y=1.0 = top) ---
+      const targetMesh = createGiraffe3D();
+      targetMesh.scale.setScalar(ANIMAL_WORLD_HEIGHT * dScale);
+      targetMesh.position.set(x, CRATE_VISUAL_TOP_Y, z);
       scene.add(targetMesh);
 
-      const crateBody = new CANNON.Body({ mass: 5, shape: new CANNON.Box(new CANNON.Vec3(0.45, 0.45, 0.45)) });
+      const animalCenterY = CRATE_VISUAL_TOP_Y + (ANIMAL_WORLD_HEIGHT * dScale) / 2;
+
+      // Physics: single body for the whole 2-crate stack
+      const crateBody = new CANNON.Body({
+        mass: 5,
+        shape: new CANNON.Box(new CANNON.Vec3(CRATE_SIZE / 2, CRATE_SIZE, CRATE_SIZE / 2)),
+      });
       crateBody.position.set(x, CRATE_Y, z);
       const targetBody = new CANNON.Body({ mass: 1, shape: new CANNON.Sphere(0.42) });
-      targetBody.position.set(x, targetY, z);
+      targetBody.position.set(x, animalCenterY, z);
 
-      return { crateMesh, targetMesh, crateBody, targetBody, distanceM: distances[i], x, z, inWorld: false };
+      return { bottomCrateMesh, crateMesh, targetMesh, crateBody, targetBody, distanceM, x, z, inWorld: false, distanceScaleFactor: dScale, animalCenterY };
     });
 
     recomputeBoardPositions();
@@ -354,16 +544,17 @@ export default function SlingshotGame({
       return { x: (v.x * 0.5 + 0.5) * 100, y: (1 - (v.y * 0.5 + 0.5)) * 100 };
     };
 
+    // Board answer card: project below ground so the card sits in the grass
+    // with a clear gap from the crate base.
     const boards = lanesRef.current.map((lane) => {
-      const { x, y, z } = lane.targetMesh.position;
-      return project(x, y + 0.55, z);
+      return project(lane.x, GROUND_Y - 0.3, lane.z);
     });
     setBoardScreenPos(boards);
 
-    // Distance label under each animal — lets the player see exactly what
-    // power value that lane needs before committing to a shot.
+    // Distance label ABOVE the giraffe head.
     const distanceLabels = lanesRef.current.map((lane) => {
-      const pos = project(lane.x, GROUND_Y, lane.z);
+      const topY = CRATE_VISUAL_TOP_Y + ANIMAL_WORLD_HEIGHT * lane.distanceScaleFactor + 0.35;
+      const pos = project(lane.x, topY, lane.z);
       if (!pos) return null;
       return { x: pos.x, y: pos.y, text: `${Math.round(lane.distanceM)} 公尺` };
     });
@@ -374,7 +565,8 @@ export default function SlingshotGame({
     // base on the ground, centered on that combined span.
     const animals = lanesRef.current.map((lane) => {
       const { x, y, z } = lane.targetMesh.position;
-      const top = project(x, y + ANIMAL_WORLD_HEIGHT / 2, z);
+      // y is sprite bottom; top of sprite = y + scale.y
+      const top = project(x, y + lane.targetMesh.scale.y, z);
       const bottom = project(x, GROUND_Y, z);
       if (!top || !bottom) return null;
       // top/bottom.y are % of container height — convert to px before use
@@ -394,51 +586,40 @@ export default function SlingshotGame({
     if (!container) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x8fd0f5);
-    scene.fog = new THREE.Fog(0x8fd0f5, 16, 34);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-    // Tilted down further than a "neutral" shot so grass dominates the
-    // frame and sky is a smaller band, matching the reference photo's
-    // proportions (~30% sky / 70% grass) instead of a roughly 50/50 split.
+    // FOV 60° + pitch 4.1° down → horizon at ~43% from top, matching the
+    // background image's fence/horizon line position.
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
     camera.position.set(0, 1.9, -2);
-    camera.lookAt(0, -0.6, 16);
+    camera.lookAt(0, 0.6, 16);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setClearColor(0x000000, 0);
     renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Textures load asynchronously, but three.js repaints once the image
-    // data arrives — assigning these placeholder Texture objects to
-    // sprite materials immediately (before the image is ready) is safe.
-    const textureLoader = new THREE.TextureLoader();
-    idleTextureRef.current = textureLoader.load(ANIMAL_IDLE_SRC);
-    fallenTextureRef.current = textureLoader.load(ANIMAL_FALLEN_SRC);
-    crateIdleTextureRef.current = textureLoader.load(CRATE_IDLE_SRC);
-    crateDestroyedTextureRef.current = textureLoader.load(CRATE_DESTROYED_SRC);
+    // Crates use a procedural canvas texture — no PNG, no transparent padding.
+    crateBoxTextureRef.current = createCrateBoxTexture();
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x4a7c3a, 0.9);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x88cc66, 1.4);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 1.1);
     sun.position.set(6, 10, 4);
     sun.castShadow = true;
     scene.add(sun);
-
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(60, 60),
-      new THREE.MeshStandardMaterial({ color: 0x5aa84a }),
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = GROUND_Y;
-    ground.receiveShadow = true;
-    scene.add(ground);
+    // Front fill light — illuminates camera-facing surfaces of the 3D giraffe.
+    // Without this the -Z normals receive almost zero directional light and
+    // the bright yellow body looks washed-out dark.
+    const fill = new THREE.DirectionalLight(0xfffce8, 1.3);
+    fill.position.set(0, 4, -6);
+    scene.add(fill);
 
     const projectileMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.22, 24, 18),
-      new THREE.MeshStandardMaterial({ color: PROJECTILE_COLORS[0], metalness: 0.35, roughness: 0.15 }),
+      new THREE.MeshStandardMaterial({ color: PROJECTILE_COLOR, metalness: 0.4, roughness: 0.06 }),
     );
     projectileMesh.visible = false;
     scene.add(projectileMesh);
@@ -478,16 +659,22 @@ export default function SlingshotGame({
       if (phaseRef.current === 'charging' && powerFillRef.current && powerLabelRef.current) {
         const value = currentPowerValue(now - chargeStartRef.current);
         const pct = ((value - POWER_MIN) / (POWER_MAX - POWER_MIN)) * 100;
-        const travel = 100 - SHOOT_BAR_INSET_PCT * 2;
-        powerFillRef.current.style.left = `${SHOOT_BAR_INSET_PCT + (pct / 100) * travel}%`;
+        // Dark mask covers right portion; 100-pct reveals the gradient from left
+        powerFillRef.current.style.width = `${100 - pct}%`;
         powerLabelRef.current.textContent = `${Math.round(value)} 公尺`;
+        if (skyDistanceRef.current) {
+          skyDistanceRef.current.textContent = `${Math.round(value)} 公尺`;
+          skyDistanceRef.current.style.opacity = '1';
+        }
+      } else if (skyDistanceRef.current) {
+        skyDistanceRef.current.style.opacity = '0';
       }
 
       // Kinematic projectile flight tween.
       if (phaseRef.current === 'flying' && flightRef.current && projectileRef.current) {
         const f = flightRef.current;
         const t = Math.min((now - f.startedAt) / FLIGHT_MS, 1);
-        const arc = 2.6 * 4 * t * (1 - t);
+        const arc = 2.6 * 0.7 * 4 * t * (1 - t); // arc reduced 30%
         projectileRef.current.position.set(
           f.from.x + (f.to.x - f.from.x) * t,
           f.from.y + (f.to.y - f.from.y) * t + arc,
@@ -504,11 +691,29 @@ export default function SlingshotGame({
         world.step(1 / 60, dt, 3);
         lanesRef.current.forEach((lane) => {
           if (!lane.inWorld) return;
-          lane.crateMesh.position.copy(lane.crateBody.position as unknown as THREE.Vector3);
-          lane.crateMesh.quaternion.copy(lane.crateBody.quaternion as unknown as THREE.Quaternion);
-          lane.targetMesh.position.copy(lane.targetBody.position as unknown as THREE.Vector3);
+          // Both crate sprites follow the shared physics body.
+          // Top crate = body centre + half stack; bottom = body centre - half stack.
+          const bx = lane.crateBody.position.x;
+          const by = lane.crateBody.position.y;
+          const bz = lane.crateBody.position.z;
+          const cq = lane.crateBody.quaternion as unknown as THREE.Quaternion;
+          lane.crateMesh.position.set(bx, by + CRATE_SIZE / 2, bz);
+          lane.crateMesh.quaternion.copy(cq);
+          lane.bottomCrateMesh.position.set(bx, by - CRATE_SIZE / 2, bz);
+          lane.bottomCrateMesh.quaternion.copy(cq);
+          // Giraffe Group: local y=0 is feet; body tracks center = feet + halfH.
+          lane.targetMesh.position.set(
+            lane.targetBody.position.x,
+            lane.targetBody.position.y - lane.targetMesh.scale.y / 2,
+            lane.targetBody.position.z,
+          );
           lane.targetMesh.quaternion.copy(lane.targetBody.quaternion as unknown as THREE.Quaternion);
         });
+        // Sync ball mesh to its physics body (active after a hit).
+        if (ballBodyRef.current && projectileRef.current) {
+          const bp = ballBodyRef.current.position;
+          projectileRef.current.position.set(bp.x, bp.y, bp.z);
+        }
       }
 
       if (pendingAdvanceKindRef.current !== 'none' && now >= pendingAdvanceAtRef.current) {
@@ -534,7 +739,8 @@ export default function SlingshotGame({
 
   function resolveArrival(lane: number, isHit: boolean) {
     phaseRef.current = 'resolving';
-    if (projectileRef.current) projectileRef.current.visible = false;
+    // Miss: hide ball immediately. Hit: ball stays visible and gets physics.
+    if (!isHit && projectileRef.current) projectileRef.current.visible = false;
 
     if (!isHit) {
       pendingAdvanceKindRef.current = 'none';
@@ -548,37 +754,49 @@ export default function SlingshotGame({
     const laneObj = lanesRef.current[lane];
     const target = roundRef.current?.targets[lane];
     const world = worldRef.current;
-    if (laneObj && fallenTextureRef.current) {
-      const mat = laneObj.targetMesh.material as THREE.SpriteMaterial;
-      mat.map = fallenTextureRef.current;
-      mat.needsUpdate = true;
-      const fallenHeight = ANIMAL_FALLEN_PX.h * ANIMAL_SCALE;
-      const fallenWidth = ANIMAL_FALLEN_PX.w * ANIMAL_SCALE;
-      laneObj.targetMesh.scale.set(fallenWidth, fallenHeight, 1);
-      laneObj.targetMesh.position.y = CRATE_TOP_Y + fallenHeight / 2;
-      laneObj.targetBody.position.y = CRATE_TOP_Y + fallenHeight / 2;
-    }
-    if (laneObj && crateDestroyedTextureRef.current) {
-      const crateMat = laneObj.crateMesh.material as THREE.SpriteMaterial;
-      crateMat.map = crateDestroyedTextureRef.current;
-      crateMat.needsUpdate = true;
-      const destroyedHeight = CRATE_DESTROYED_PX.h * CRATE_SCALE;
-      const destroyedWidth = CRATE_DESTROYED_PX.w * CRATE_SCALE;
-      laneObj.crateMesh.scale.set(destroyedWidth, destroyedHeight, 1);
-      laneObj.crateMesh.position.y = destroyedHeight / 2;
-      laneObj.crateBody.position.y = destroyedHeight / 2;
+    // Crates are BoxGeometry (THREE.Mesh) — no texture swap needed.
+    // The physics tumble is the entire visual effect; just darken the top
+    // crate material slightly to hint at damage.
+    if (laneObj) {
+      const mat = laneObj.crateMesh.material as THREE.MeshStandardMaterial;
+      mat.color.set(0x6b4010);
     }
     if (laneObj && world && !laneObj.inWorld) {
       world.addBody(laneObj.crateBody);
       world.addBody(laneObj.targetBody);
       laneObj.inWorld = true;
-      const kick = 4 + Math.random() * 2;
-      laneObj.crateBody.velocity.set((Math.random() - 0.5) * 2, 3, kick);
-      laneObj.crateBody.angularVelocity.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 0);
-      laneObj.targetBody.velocity.set((Math.random() - 0.5) * 3, 5, kick + 1);
-      laneObj.targetBody.angularVelocity.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0);
+      // Knockback away from camera (+z) — the player shoots from the front,
+      // so the giraffe should fly backward deeper into the scene.
+      const kick = (3 + Math.random() * 2) * 1.69;
+      const side = (Math.random() < 0.5 ? 1 : -1) * (3 + Math.random() * 2) * 1.69;
+      laneObj.crateBody.velocity.set(side, (3 + Math.random() * 2) * 1.69, kick * 0.8);
+      laneObj.crateBody.angularVelocity.set(
+        (Math.random() - 0.5) * 15,
+        (Math.random() - 0.5) * 12,
+        (Math.random() - 0.5) * 15,
+      );
+      laneObj.targetBody.velocity.set(side * 0.5, (8 + Math.random() * 4) * 1.69, kick * 1.2);
+      laneObj.targetBody.angularVelocity.set(
+        (Math.random() - 0.5) * 18,
+        (Math.random() - 0.5) * 15,
+        (Math.random() - 0.5) * 18,
+      );
     }
-    settleUntilRef.current = performance.now() + RESULT_PAUSE_MS;
+    // Give the ball a physics body so it bounces and rolls after hitting.
+    const proj = projectileRef.current;
+    if (proj && world) {
+      const ballBody = new CANNON.Body({ mass: 0.5, shape: new CANNON.Sphere(0.22) });
+      ballBody.position.set(proj.position.x, proj.position.y, proj.position.z);
+      if (flightRef.current) {
+        const f = flightRef.current;
+        const dir = new THREE.Vector3().subVectors(f.to, f.from).normalize();
+        ballBody.velocity.set(dir.x * 5, Math.max(dir.y * 2, 0.5), dir.z * 4);
+      }
+      world.addBody(ballBody);
+      ballBodyRef.current = ballBody;
+    }
+    // Physics window + advance: 2.8 s so crates and giraffe fully tumble on screen.
+    settleUntilRef.current = performance.now() + 2800;
 
     if (target?.isCorrect) {
       setScore((s) => s + 10);
@@ -592,13 +810,13 @@ export default function SlingshotGame({
       playErrorSound();
       if (nextLives <= 0) {
         pendingAdvanceKindRef.current = 'gameOver';
-        pendingAdvanceAtRef.current = performance.now() + RESULT_PAUSE_MS;
+        pendingAdvanceAtRef.current = performance.now() + 2800;
       }
     }
 
     if (pendingAdvanceKindRef.current !== 'gameOver') {
       pendingAdvanceKindRef.current = 'nextRound';
-      pendingAdvanceAtRef.current = performance.now() + RESULT_PAUSE_MS;
+      pendingAdvanceAtRef.current = performance.now() + 2800;
     }
   }
 
@@ -631,6 +849,7 @@ export default function SlingshotGame({
     phaseRef.current = 'charging';
     chargingLaneRef.current = lane;
     chargeStartRef.current = performance.now();
+    clickClientRef.current = { x: clientX, y: clientY };
     setChargingLane(lane);
     updateCrosshair(clientX, clientY);
   }
@@ -657,15 +876,34 @@ export default function SlingshotGame({
 
     const isHit = laneObj ? Math.abs(power - laneObj.distanceM) <= DISTANCE_TOLERANCE : false;
     const landingZ = laneObj ? (isHit ? laneObj.z : distanceToZ(power)) : distanceToZ(power);
-    const landingY = isHit ? ANIMAL_IDLE_Y : GROUND_Y + 0.22;
-    const launchX = laneObj ? laneObj.x : 0;
+    const landingY = isHit ? (laneObj?.animalCenterY ?? CRATE_VISUAL_TOP_Y) : GROUND_Y + 0.22;
+
+    // Compute landing X from the exact click position so the ball goes where
+    // the user aimed — no left/right drift from lane centre.
+    let launchX = laneObj ? laneObj.x : 0;
+    const cam = cameraRef.current;
+    const cont = containerRef.current;
+    if (cam && cont && clickClientRef.current) {
+      const rect = cont.getBoundingClientRect();
+      const cx = clickClientRef.current.x;
+      const cy = clickClientRef.current.y;
+      const ndcX = ((cx - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((cy - rect.top) / rect.height) * 2 + 1;
+      const near = new THREE.Vector3(ndcX, ndcY, -1).unproject(cam);
+      const far  = new THREE.Vector3(ndcX, ndcY,  1).unproject(cam);
+      const dir  = far.clone().sub(near).normalize();
+      if (Math.abs(dir.z) > 0.001) {
+        const t = (landingZ - near.z) / dir.z;
+        launchX = near.x + t * dir.x;
+      }
+    }
+    clickClientRef.current = null;
+
     const to = new THREE.Vector3(launchX, landingY, landingZ);
 
     if (projectileRef.current) {
       projectileRef.current.visible = true;
       projectileRef.current.position.copy(LAUNCH_POS);
-      const color = PROJECTILE_COLORS[Math.floor(Math.random() * PROJECTILE_COLORS.length)];
-      (projectileRef.current.material as THREE.MeshStandardMaterial).color.setHex(color);
     }
     flightRef.current = { startedAt: performance.now(), from: LAUNCH_POS.clone(), to, lane, isHit };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -703,51 +941,53 @@ export default function SlingshotGame({
         <span>🎯 得分 {score}</span>
       </div>
 
-      <div className="mt-3 flex items-center justify-center">
-        <div className="rounded-lg bg-white/95 px-6 py-2 text-2xl font-extrabold text-zinc-900 shadow-md">
-          {round?.prompt}
-        </div>
-      </div>
-
       <div
-        className={`relative mx-auto mt-3 aspect-[4/3] w-full max-w-none overflow-hidden rounded-xl border-[6px] border-slate-400 ${
+        className={`relative mx-auto mt-3 aspect-[4/3] w-full overflow-hidden rounded-xl border-[6px] border-slate-400 ${
           hitFlash === 'wrong' ? 'stage-shake' : ''
         }`}
+        style={{ backgroundImage: "url('/games/angry-cow/bg.png')", backgroundSize: 'cover', backgroundPosition: 'center' }}
       >
-        <div ref={containerRef} className="absolute inset-0" />
-
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-[32%] overflow-hidden">
-          {clouds.map((cloud, i) => (
-            <img
-              key={i}
-              src={cloud.src}
-              alt=""
-              className="cloud-drift"
-              style={{
-                top: `${cloud.top}%`,
-                width: `${cloud.width}px`,
-                animationDuration: `${cloud.duration}s`,
-                animationDelay: `${cloud.delay}s`,
-              }}
-            />
-          ))}
+        {/* Prompt — large centered banner at the very top of the game frame */}
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex items-start justify-center">
+          <div className="rounded-xl bg-white/60 px-6 py-3 text-[3.6rem] font-black text-zinc-900 shadow-lg">
+            {round?.prompt}
+          </div>
         </div>
 
-        {round?.targets.map((target, i) => {
-          const pos = boardScreenPos[i];
-          if (!pos) return null;
-          return (
-            <div
-              key={target.id}
-              className={`pointer-events-none absolute flex select-none flex-col items-center gap-1 rounded-lg border-2 px-2 py-1.5 text-center shadow-md transition-transform ${
-                chargingLane === i ? 'border-emerald-500 bg-emerald-100 scale-105' : 'border-amber-800 bg-amber-100'
-              }`}
-              style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -100%)' }}
-            >
-              <div className="pointer-events-auto">{target.board}</div>
-            </div>
-          );
-        })}
+        {/* Sky cloud layer — rendered before the Three.js canvas so it stays behind all 3D objects */}
+        {cloudUrls.length > 0 && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-[43%] overflow-hidden">
+            {clouds.map((cloud, i) => {
+              const url = cloudUrls[cloud.srcIndex];
+              if (!url) return null;
+              return (
+                <div
+                  key={i}
+                  className="cloud-drift"
+                  style={{
+                    backgroundImage: `url('${url}')`,
+                    backgroundSize: '100% 100%',
+                    width: `${cloud.width}px`,
+                    height: `${Math.round(cloud.width * 0.67)}px`,
+                    top: `${cloud.top}%`,
+                    animationDuration: `${cloud.duration}s`,
+                    animationDelay: `${cloud.delay}s`,
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        {/* Real-time distance display in the sky while charging — inline style
+            ensures identical centering as the shot-distance-pop animation */}
+        <div
+          ref={skyDistanceRef}
+          className="pointer-events-none absolute whitespace-nowrap text-5xl font-black text-white transition-opacity duration-100"
+          style={{ opacity: 0, left: '50%', top: '15%', transform: 'translate(-50%, -50%)', textShadow: '0 2px 8px rgba(0,0,0,0.55), 0 0 20px rgba(0,0,0,0.3)' }}
+        />
+
+        <div ref={containerRef} className="absolute inset-0" />
 
         {/* The clickable hit-zone is the animal itself, not its answer board. */}
         {round?.targets.map((target, i) => {
@@ -776,18 +1016,42 @@ export default function SlingshotGame({
           );
         })}
 
+        {/* Board answer — rendered AFTER hitzone so it sits on top in z-order.
+            Outer div passes pointer events through (pointer-events-none);
+            inner div re-enables them so the SpeakButton can be clicked. */}
+        {round?.targets.map((target, i) => {
+          const pos = boardScreenPos[i];
+          if (!pos) return null;
+          return (
+            <div
+              key={target.id}
+              className="pointer-events-none absolute flex select-none items-center justify-center text-center"
+              style={{
+                left: `${pos.x}%`,
+                top: `${pos.y}%`,
+                transform: `translate(-50%, 0%) ${chargingLane === i ? 'translateY(-4px)' : ''}`,
+                transition: 'transform 0.12s ease',
+              }}
+            >
+              <div className="pointer-events-auto flex flex-col items-center justify-center gap-0.5">
+                {target.board}
+              </div>
+            </div>
+          );
+        })}
+
         {round?.targets.map((target, i) => {
           const pos = distanceLabelPos[i];
           if (!pos) return null;
           return (
             <div
               key={`${target.id}-distance`}
-              className="pointer-events-none absolute whitespace-nowrap text-[17px] font-bold text-white"
+              className="pointer-events-none absolute whitespace-nowrap rounded-md bg-black/40 px-2 py-0.5 text-[23px] font-bold text-white"
               style={{
                 left: `${pos.x}%`,
                 top: `${pos.y}%`,
-                transform: 'translate(-50%, 2px)',
-                textShadow: '0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.6)',
+                transform: 'translate(-50%, -50%)',
+                textShadow: '0 1px 3px rgba(0,0,0,0.9)',
               }}
             >
               {pos.text}
@@ -796,22 +1060,28 @@ export default function SlingshotGame({
         })}
 
         {chargingLane !== null && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex flex-col items-center gap-1 px-6">
-            <div className="relative w-full max-w-xs">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/games/angry-cow/shoot-bar.png" alt="" className="w-full select-none" draggable={false} />
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex flex-col items-center gap-1 px-8">
+            {/* Colorful gradient power bar */}
+            <div className="relative h-6 w-full max-w-xs overflow-hidden rounded-full border-2 border-white/50 shadow-lg"
+              style={{ background: '#1a1a2e' }}>
+              {/* Full gradient — revealed left-to-right as power increases */}
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{ background: 'linear-gradient(to right, #22c55e, #a3e635, #facc15, #f97316, #ef4444)' }}
+              />
+              {/* Dark mask from the right — shrinks to reveal gradient */}
               <div
                 ref={powerFillRef}
-                className="absolute top-1/2 h-[140%] w-[2px] -translate-y-1/2 bg-white mix-blend-difference"
-                style={{ left: `${SHOOT_BAR_INSET_PCT}%` }}
+                className="absolute inset-y-0 right-0 rounded-r-full"
+                style={{ width: '100%', background: 'rgba(10,10,20,0.88)' }}
               />
-            </div>
-            <div
-              className="flex w-full max-w-xs justify-between text-[10px] text-white/80"
-              style={{ paddingLeft: `${SHOOT_BAR_INSET_PCT}%`, paddingRight: `${SHOOT_BAR_INSET_PCT}%` }}
-            >
-              {POWER_TICKS.map((tick) => (
-                <span key={tick}>{tick}</span>
+              {/* Subtle tick lines */}
+              {POWER_TICKS.slice(1, -1).map((tick) => (
+                <div
+                  key={tick}
+                  className="pointer-events-none absolute inset-y-0 w-px bg-white/20"
+                  style={{ left: `${((tick - POWER_MIN) / (POWER_MAX - POWER_MIN)) * 100}%` }}
+                />
               ))}
             </div>
             <div ref={powerLabelRef} className="text-sm font-bold text-white drop-shadow" />
@@ -845,8 +1115,8 @@ export default function SlingshotGame({
           <div
             key={shotDisplay.key}
             onAnimationEnd={() => setShotDisplay(null)}
-            className="shot-distance-pop pointer-events-none absolute left-1/2 top-[22%] whitespace-nowrap text-4xl font-extrabold text-white"
-            style={{ textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0 14px rgba(0,0,0,0.4)' }}
+            className="shot-distance-pop pointer-events-none absolute whitespace-nowrap text-5xl font-black text-white"
+            style={{ left: '50%', top: '15%', textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0 14px rgba(0,0,0,0.4)' }}
           >
             {shotDisplay.value} 公尺
           </div>

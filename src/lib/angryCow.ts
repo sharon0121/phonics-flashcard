@@ -1,6 +1,6 @@
 import type { Word } from '@/lib/types';
 
-export type AngryCowMode = 'english' | 'math';
+export type AngryCowMode = 'english' | 'math' | 'mixed';
 
 export interface EnglishTarget {
   id: string;
@@ -14,9 +14,8 @@ export interface EnglishRound {
 }
 
 export interface MathProblem {
-  a: number;
-  b: number;
-  op: '+' | '-';
+  nums: number[];           // all operands in order
+  ops: Array<'+' | '-'>;   // operators between operands (length = nums.length - 1)
   answer: number;
 }
 
@@ -41,12 +40,6 @@ function pickDistinct(pool: Word[], avoidIds: Set<string>): Word | null {
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-// Builds one English round: a correct word drawn from the first non-empty
-// pool (priority order set by the caller), plus 2 distractors drawn from the
-// full combined pool set, distinct from the answer and from each other.
-// Returns null if the combined pools don't have at least 3 distinct words —
-// the caller should retry with a broader pool (e.g. the full phonics bank)
-// rather than render a broken round.
 export function makeEnglishRound(pools: Word[][]): EnglishRound | null {
   const combined = pools.flat();
   const nonEmpty = pools.find((p) => p.length > 0);
@@ -66,28 +59,6 @@ export function makeEnglishRound(pools: Word[][]): EnglishRound | null {
   return { word, targets };
 }
 
-// Same 20%-45% per-problem subtraction probability convention used by
-// abacus.ts, kept independent here since this game wants simple single-
-// operation "a op b = ?" problems rather than abacus's multi-term columns.
-const SUB_PROB_MIN = 0.2;
-const SUB_PROB_MAX = 0.45;
-
-export function makeMathProblem(maxValue: number): MathProblem {
-  const subProb = SUB_PROB_MIN + Math.random() * (SUB_PROB_MAX - SUB_PROB_MIN);
-  if (Math.random() < subProb) {
-    const a = 1 + Math.floor(Math.random() * maxValue);
-    const b = Math.floor(Math.random() * (a + 1)); // 0..a, so a - b never goes negative
-    return { a, b, op: '-', answer: a - b };
-  }
-  const a = 1 + Math.floor(Math.random() * maxValue);
-  const b = 1 + Math.floor(Math.random() * maxValue);
-  return { a, b, op: '+', answer: a + b };
-}
-
-// Two wrong numbers near the correct answer, expanding outward one step at a
-// time so they stay plausible rather than wildly off — mirrors the "expand
-// outward from the true answer, skip duplicates" approach coordinate-hunt
-// uses for its math grid.
 function makeMathDistractors(answer: number): [number, number] {
   const used = new Set([answer]);
   const result: number[] = [];
@@ -104,19 +75,36 @@ function makeMathDistractors(answer: number): [number, number] {
   }
   while (result.length < 2) {
     const candidate = Math.floor(Math.random() * 1000);
-    if (!used.has(candidate)) {
-      used.add(candidate);
-      result.push(candidate);
-    }
+    if (!used.has(candidate)) { used.add(candidate); result.push(candidate); }
   }
   return [result[0], result[1]];
 }
 
-export function makeMathRound(maxValue: number): MathRound {
-  const problem = makeMathProblem(maxValue);
-  const [d1, d2] = makeMathDistractors(problem.answer);
+// terms=2: addition or subtraction (classic 2-operand).
+// terms>=3: all-addition chain (simpler for young children).
+export function makeMathRound(maxValue: number, terms: number = 2): MathRound {
+  let nums: number[];
+  let ops: Array<'+' | '-'>;
+
+  if (terms <= 2) {
+    const subProb = 0.2 + Math.random() * 0.25;
+    if (Math.random() < subProb) {
+      const a = 1 + Math.floor(Math.random() * maxValue);
+      const b = Math.floor(Math.random() * (a + 1));
+      nums = [a, b]; ops = ['-'];
+    } else {
+      nums = [1 + Math.floor(Math.random() * maxValue), 1 + Math.floor(Math.random() * maxValue)];
+      ops = ['+'];
+    }
+  } else {
+    nums = Array.from({ length: terms }, () => 1 + Math.floor(Math.random() * maxValue));
+    ops = Array<'+' | '-'>(terms - 1).fill('+');
+  }
+
+  const answer = ops.reduce<number>((acc, op, i) => (op === '+' ? acc + nums[i + 1] : acc - nums[i + 1]), nums[0]);
+  const [d1, d2] = makeMathDistractors(answer);
   const targets = shuffled(
-    [problem.answer, d1, d2].map((v, i) => ({ id: `t${i}-${v}-${Math.random()}`, isCorrect: v === problem.answer, value: v })),
+    [answer, d1, d2].map((v, i) => ({ id: `t${i}-${v}-${Math.random()}`, isCorrect: v === answer, value: v })),
   );
-  return { problem, targets };
+  return { problem: { nums, ops, answer }, targets };
 }

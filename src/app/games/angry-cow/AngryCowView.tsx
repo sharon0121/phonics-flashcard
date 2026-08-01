@@ -1,22 +1,114 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import HeroMascot from '@/components/HeroMascot';
-import EnglishMode from './EnglishMode';
-import MathMode from './MathMode';
+import SpeakButton from '@/components/SpeakButton';
+import ZhuyinText from '@/components/ZhuyinText';
+import { words as PHONICS_WORDS } from '@/data/words';
+import SlingshotGame, { type SlingshotRound } from './SlingshotGame';
+import AngryCowLeaderboardPanel from './AngryCowLeaderboardPanel';
+import {
+  useAngryCowWordPools,
+  useAngryCowSpeechRate,
+  useAngryCowMaxValue,
+  useAngryCowMathTerms,
+  useAngryCowGameMode,
+  SPEECH_RATE_VALUES,
+} from '@/lib/angryCowSettings';
+import { makeEnglishRound, makeMathRound } from '@/lib/angryCow';
+import { recordAngryCowRun, renameAngryCowRecord, useLastAngryCowPlayerName } from '@/lib/angryCowHistory';
 
-type GameMode = 'english' | 'math';
+const MODE_META = {
+  english: { emoji: '🔤', title: '射擊吧！憤怒牛！英文版',   desc: '看清楚上方的英文單字，射擊拿著正確中文意思牌子的牛，射錯會扣一顆心！' },
+  math:    { emoji: '🧮', title: '射擊吧！憤怒牛！數學版',   desc: '算出正確答案，射擊拿著答案牌子的牛，射錯會扣一顆心！' },
+  mixed:   { emoji: '🎯', title: '射擊吧！憤怒牛！混合版',   desc: '英文單字和數學算式隨機出題，射擊答案正確的牛！' },
+} as const;
 
 export default function AngryCowView() {
-  const [mode, setMode] = useState<GameMode | null>(null);
+  const gameMode    = useAngryCowGameMode();
+  const wordPools   = useAngryCowWordPools();
+  const speechRate  = useAngryCowSpeechRate();
+  const maxValue    = useAngryCowMaxValue();
+  const mathTerms   = useAngryCowMathTerms();
+  const lastPlayerName = useLastAngryCowPlayerName();
 
-  if (mode === 'english') return <EnglishMode onBack={() => setMode(null)} />;
-  if (mode === 'math') return <MathMode onBack={() => setMode(null)} />;
+  // Update refs inline (before effects) so makeRound always reads current values.
+  const wordPoolsRef  = useRef(wordPools);
+  const speechRateRef = useRef(speechRate);
+  const maxValueRef   = useRef(maxValue);
+  const mathTermsRef  = useRef(mathTerms);
+  const gameModeRef   = useRef(gameMode);
+  wordPoolsRef.current  = wordPools;
+  speechRateRef.current = speechRate;
+  maxValueRef.current   = maxValue;
+  mathTermsRef.current  = mathTerms;
+  gameModeRef.current   = gameMode;
+
+  const gamePanelRef = useRef<HTMLDivElement>(null);
+  const [gamePanelHeight, setGamePanelHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const el = gamePanelRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height;
+      if (h) setGamePanelHeight(Math.round(h));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const makeEnglishSlingshotRound = useCallback((): SlingshotRound | null => {
+    const round = makeEnglishRound(wordPoolsRef.current) ?? makeEnglishRound([...wordPoolsRef.current, PHONICS_WORDS]);
+    if (!round) return null;
+    const rate = SPEECH_RATE_VALUES[speechRateRef.current];
+    return {
+      prompt: <span className="uppercase tracking-widest">{round.word.word}</span>,
+      spokenText: `What is ${round.word.word}?`,
+      targets: round.targets.map((t) => ({
+        id: t.id,
+        isCorrect: t.isCorrect,
+        board: (
+          <div className="flex flex-col items-center gap-1">
+            <div className="rounded-lg bg-white/80 px-2 py-1 text-zinc-900">
+              <ZhuyinText zh={t.word.zh} zhuyin={t.word.zhuyin} className="font-black" />
+            </div>
+            <span onPointerDown={(e) => e.stopPropagation()}>
+              <SpeakButton text={t.word.zh} lang="zh-TW" rate={rate} className="!p-1" />
+            </span>
+          </div>
+        ),
+      })),
+    };
+  }, []);
+
+  const makeMathSlingshotRound = useCallback((): SlingshotRound => {
+    const round = makeMathRound(maxValueRef.current, mathTermsRef.current);
+    const { nums, ops } = round.problem;
+    const expr = nums
+      .map((n, i) => (i === 0 ? String(n) : ` ${ops[i - 1] === '+' ? '+' : '−'} ${n}`))
+      .join('');
+    return {
+      prompt: <span>{expr} = ?</span>,
+      targets: round.targets.map((t) => ({
+        id: t.id,
+        isCorrect: t.isCorrect,
+        board: <span className="px-1 text-xl font-extrabold text-zinc-900">{t.value}</span>,
+      })),
+    };
+  }, []);
+
+  const makeRound = useCallback((): SlingshotRound | null => {
+    const mode = gameModeRef.current;
+    if (mode === 'math')    return makeMathSlingshotRound();
+    if (mode === 'english') return makeEnglishSlingshotRound();
+    // mixed: 50/50 random
+    return Math.random() < 0.5 ? makeEnglishSlingshotRound() : makeMathSlingshotRound();
+  }, [makeEnglishSlingshotRound, makeMathSlingshotRound]);
+
+  const { emoji, title, desc } = MODE_META[gameMode];
 
   return (
-    <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 py-8">
-      <HeroMascot src="/heroes/cutout-game.png" alt="" />
+    <main className="relative mx-auto w-full max-w-7xl flex-1 px-4 py-2 sm:py-8">
       <div className="relative z-10">
         <div className="flex items-center justify-between">
           <Link
@@ -41,44 +133,26 @@ export default function AngryCowView() {
           </Link>
         </div>
 
-        <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">🐮 射擊吧！憤怒牛！</h1>
-        <p className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Shoot! Angry Cow!</p>
-        <p className="mt-3 text-sm font-medium text-zinc-300">選擇挑戰模式：</p>
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-2xl">{emoji}</span>
+          <h1 className="text-2xl font-bold text-[var(--hero-gold)]">{title}</h1>
+        </div>
+        <p className="mt-1 text-sm text-zinc-300">{desc}</p>
 
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setMode('english')}
-            className="group flex flex-col items-center gap-3 rounded-2xl border-2 border-[var(--hero-gold)] bg-white/10 p-6 text-center shadow-lg transition-all hover:bg-white/20 hover:shadow-xl"
-          >
-            <span className="text-6xl transition-transform group-hover:scale-110">🔤</span>
-            <span className="text-xl font-bold text-[var(--hero-gold)]">英文版</span>
-            <span className="text-sm leading-relaxed text-zinc-300">
-              看英文單字猜中文意思
-              <br />
-              按住蓄力射擊拿對答案的牛！
-            </span>
-            <span className="mt-1 rounded-full bg-[var(--hero-gold)] px-4 py-1.5 text-sm font-bold text-zinc-900">
-              選這個！
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setMode('math')}
-            className="group flex flex-col items-center gap-3 rounded-2xl border-2 border-sky-400 bg-white/10 p-6 text-center shadow-lg transition-all hover:bg-white/20 hover:shadow-xl"
-          >
-            <span className="text-6xl transition-transform group-hover:scale-110">🧮</span>
-            <span className="text-xl font-bold text-sky-300">數學版</span>
-            <span className="text-sm leading-relaxed text-zinc-300">
-              算出加減算式的答案
-              <br />
-              按住蓄力射擊拿對答案的牛！
-            </span>
-            <span className="mt-1 rounded-full bg-sky-400 px-4 py-1.5 text-sm font-bold text-zinc-900">
-              英雄榜 🏆
-            </span>
-          </button>
+        <div className="mt-2 flex flex-col gap-2 sm:mt-6 sm:gap-6 sm:flex-row">
+          <AngryCowLeaderboardPanel mode={gameMode} matchHeight={gamePanelHeight} />
+          <div ref={gamePanelRef} className="min-w-0 flex-1">
+            {/* key=gameMode forces a full remount when the mode changes in settings */}
+            <SlingshotGame
+              key={gameMode}
+              makeRound={makeRound}
+              onSave={(name, score) => recordAngryCowRun(gameMode, name, score, Date.now())}
+              onRename={renameAngryCowRecord}
+              lastPlayerName={lastPlayerName}
+              animalEmoji="🐮"
+              projectileEmoji="🐦"
+            />
+          </div>
         </div>
       </div>
     </main>

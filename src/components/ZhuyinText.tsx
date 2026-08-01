@@ -2,6 +2,7 @@ interface ZhuyinTextProps {
   zh: string;
   zhuyin: string;
   className?: string;
+  vertical?: boolean;
 }
 
 const TONE_MARKS = ['ˊ', 'ˇ', 'ˋ', '˙'];
@@ -18,12 +19,12 @@ function splitReading(reading: string): { base: string; tone: string } {
 // to its right (bopomofo symbols in one column, the tone mark beside them
 // to the right rather than stacked underneath), matching how it's printed
 // in Taiwan textbooks.
-export default function ZhuyinText({ zh, zhuyin, className = '' }: ZhuyinTextProps) {
+export default function ZhuyinText({ zh, zhuyin, className = '', vertical = false }: ZhuyinTextProps) {
   const chars = Array.from(zh);
   const readings = zhuyin.split(' ');
 
   return (
-    <span className={`zhuyin-word ${className}`}>
+    <span className={`zhuyin-word ${className}`} style={vertical ? { flexDirection: 'column' } : undefined}>
       {chars.map((char, i) => {
         const { base, tone } = splitReading(readings[i] ?? '');
         return (

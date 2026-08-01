@@ -45,16 +45,18 @@ export default function EnglishMode({ onBack }: { onBack: () => void }) {
     if (!round) return null;
     const rate = SPEECH_RATE_VALUES[speechRateRef.current];
     return {
-      prompt: <span className="uppercase">{round.word.word}</span>,
-      spokenText: round.word.word,
+      prompt: <span className="uppercase tracking-widest">{round.word.word}</span>,
+      spokenText: `What is ${round.word.word}?`,
       targets: round.targets.map((t) => ({
         id: t.id,
         isCorrect: t.isCorrect,
         board: (
-          <div className="flex items-center gap-1">
-            <ZhuyinText zh={t.word.zh} zhuyin={t.word.zhuyin} className="text-sm font-bold text-zinc-900" />
+          <div className="flex flex-col items-center gap-1">
+            <div className="rounded-lg bg-white/80 px-2 py-1 text-zinc-900">
+              <ZhuyinText zh={t.word.zh} zhuyin={t.word.zhuyin} className="font-black" />
+            </div>
             <span onPointerDown={(e) => e.stopPropagation()}>
-              <SpeakButton text={t.word.zh} lang="zh-TW" rate={rate} className="!p-1 !text-sm" />
+              <SpeakButton text={t.word.zh} lang="zh-TW" rate={rate} className="!p-1" />
             </span>
           </div>
         ),

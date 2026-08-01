@@ -32,13 +32,10 @@ export default function MathMode({ onBack }: { onBack: () => void }) {
 
   const makeRound = useCallback((): SlingshotRound => {
     const round = makeMathRound(maxValueRef.current);
-    const opSymbol = round.problem.op === '+' ? '+' : '−';
+    const { nums, ops } = round.problem;
+    const expr = nums.map((n, i) => (i === 0 ? String(n) : ` ${ops[i - 1] === '+' ? '+' : '−'} ${n}`)).join('');
     return {
-      prompt: (
-        <span>
-          {round.problem.a} {opSymbol} {round.problem.b} = ?
-        </span>
-      ),
+      prompt: <span>{expr} = ?</span>,
       targets: round.targets.map((t) => ({
         id: t.id,
         isCorrect: t.isCorrect,

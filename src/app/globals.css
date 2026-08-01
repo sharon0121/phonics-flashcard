@@ -440,23 +440,15 @@ body {
 
 @keyframes shot-distance-pop {
   0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.85);
-  }
-  12% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  70% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate(-50%, -50%) scale(2.2);
   }
 }
 .shot-distance-pop {
-  animation: shot-distance-pop 3s ease-out forwards;
+  animation: shot-distance-pop 2s ease-out forwards;
 }
 
