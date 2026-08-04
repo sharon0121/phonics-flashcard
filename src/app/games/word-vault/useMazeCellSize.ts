@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { MAZE_ROWS, MAZE_COLS } from '@/lib/wordMaze';
 
 export const DEFAULT_CELL_PX = 22;
-const MIN_CELL_PX = 14;
+const MIN_CELL_PX = 16;
 const MAX_CELL_PX = 30;
 const BREATHING_ROOM_PX = 12;
 const MAZE_FRAME_CHROME_PX = 10; // maze-frame's own border+padding (border-4 + p-1) on top of the grid.
@@ -63,6 +63,11 @@ export function useMazeCellSize({ mazeFrameRef, dpadBlockRef, containerRef }: Ma
       const widthBudgetRow = containerWidth - gapPx - dpadWidth;
       const heightBudgetRow = viewportHeight - chromeAboveMaze - bottomSafety - MAZE_FRAME_CHROME_PX;
       let next = Math.floor(Math.min(widthBudgetRow / MAZE_COLS, heightBudgetRow / MAZE_ROWS));
+      // Check the fit against the size we'll actually render (never below
+      // MIN_CELL_PX) — checking the pre-clamp value understates the maze's
+      // real width and can wrongly conclude a row layout fits when the
+      // clamped-up result would actually overflow it.
+      next = Math.max(next, MIN_CELL_PX);
 
       const mazeWidthAtRow = next * MAZE_COLS;
       const fitsRow = mazeWidthAtRow + gapPx + dpadWidth <= containerWidth;

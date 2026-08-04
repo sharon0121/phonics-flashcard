@@ -453,7 +453,7 @@ export default function MazePhase({ word, ghostCount, ghostTickMs, onComplete, t
           </button>
           <div />
         </div>
-        <p className="text-center text-xs text-zinc-400">吃掉所有字母，躲開幽靈，找到傳送門！</p>
+        <p className="hidden text-center text-xs text-zinc-400 sm:block">吃掉所有字母，躲開幽靈，找到傳送門！</p>
       </div>
       </div>
     </div>

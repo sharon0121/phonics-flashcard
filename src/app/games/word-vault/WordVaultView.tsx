@@ -80,8 +80,8 @@ export default function WordVaultView() {
         </div>
         <div className="mt-2 flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/sprites/pacman.png" alt="" className="h-8 w-8" style={{ imageRendering: 'pixelated' }} />
-          <h1 className="text-2xl font-bold text-[var(--hero-gold)]">小精靈大探險</h1>
+          <img src="/sprites/pacman.png" alt="" className="h-6 w-6 sm:h-8 sm:w-8" style={{ imageRendering: 'pixelated' }} />
+          <h1 className="text-xl font-bold text-[var(--hero-gold)] sm:text-2xl">小精靈大探險</h1>
         </div>
         <p className="hidden text-xs font-semibold tracking-wide text-zinc-400 uppercase sm:block">
           Pac Word Adventure

@@ -30,14 +30,14 @@ export default function AchievementSidebar() {
       {/* Mobile/narrow: a short, fixed-height horizontal scroller so it never
           grows with the achievement count and eats into the game's vertical
           space budget. */}
-      <div className="flex h-14 w-full shrink-0 flex-col rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 px-3 py-1 sm:hidden">
-        <p className="text-center text-[9px] font-bold text-zinc-900 leading-tight">
-          🏆 成就榜・已完成 {completions.length} 個單字
-        </p>
+      <div className="flex h-9 w-full shrink-0 items-center gap-1.5 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 px-2 sm:hidden">
+        <span className="shrink-0 text-[10px] font-bold whitespace-nowrap text-zinc-900">
+          🏆 {completions.length} 個
+        </span>
         {completions.length === 0 ? (
-          <p className="text-center text-[10px] leading-tight text-zinc-400">還沒有完成任何單字</p>
+          <p className="truncate text-[10px] text-zinc-400">還沒有完成任何單字</p>
         ) : (
-          <div className="mt-0.5 flex flex-1 gap-1.5 overflow-x-auto">
+          <div className="flex flex-1 gap-1.5 overflow-x-auto">
             {completions.map((c) => (
               <div key={c.word} className="w-20 shrink-0">
                 <Badge emoji={c.emoji} word={c.word} stars={c.stars} />
