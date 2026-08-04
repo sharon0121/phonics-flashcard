@@ -647,6 +647,35 @@ export default function PixelInvadersView() {
     return () => ro.disconnect();
   }, []);
 
+  // The board used to be capped at a flat max-w-lg (512px) regardless of
+  // screen size, which left a lot of unused space on an iPad's much taller
+  // viewport. Since the canvas is portrait-shaped (CW:CH), the real limit on
+  // a landscape/tablet screen is usually available HEIGHT, not width — grow
+  // the box up to whatever height budget is left above/below it, converted
+  // to a matching width via the fixed aspect ratio.
+  const [boardMaxWidth, setBoardMaxWidth] = useState(512);
+  useEffect(() => {
+    function recompute() {
+      const area = canvasAreaRef.current;
+      if (!area) return;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const chromeAbove = area.getBoundingClientRect().top;
+      const bottomSafety = 16;
+      const availableHeight = viewportHeight - chromeAbove - bottomSafety;
+      const widthFromHeight = availableHeight * (CW / CH);
+      setBoardMaxWidth(Math.floor(Math.max(260, Math.min(720, widthFromHeight))));
+    }
+    recompute();
+    window.addEventListener('resize', recompute);
+    window.addEventListener('orientationchange', recompute);
+    window.visualViewport?.addEventListener('resize', recompute);
+    return () => {
+      window.removeEventListener('resize', recompute);
+      window.removeEventListener('orientationchange', recompute);
+      window.visualViewport?.removeEventListener('resize', recompute);
+    };
+  }, []);
+
   const gs = useRef({
     phase: 'menu' as Phase,
     hp: MAX_HP, score: 0, streak: 0, comboStreak: 0,
@@ -1020,7 +1049,7 @@ export default function PixelInvadersView() {
       </div>
 
       {/* ── 遊戲主體 ── */}
-      <div className="flex flex-col items-center w-full max-w-lg">
+      <div className="flex flex-col items-center w-full" style={{ maxWidth: boardMaxWidth }}>
       <div className="w-full flex items-center mb-3 px-2 gap-2">
         <BackButton />
         <div className="flex flex-col ml-2">
@@ -1061,7 +1090,7 @@ export default function PixelInvadersView() {
 
       {/* HP + 統計列 */}
       {phase !== 'menu' && (
-        <div className="w-full max-w-lg flex items-center px-3 mb-1.5 gap-3">
+        <div className="w-full flex items-center px-3 mb-1.5 gap-3" style={{ maxWidth: boardMaxWidth }}>
           {/* 愛心：左側，較大 */}
           <div className="flex flex-col items-start gap-0.5">
             <span className="text-gray-500 text-[9px] font-mono leading-none">命</span>

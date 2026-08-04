@@ -65,11 +65,16 @@ function assignDistances(): number[] {
 }
 
 // --- World layout -------------------------------------------------------
-// Centre lane at 50% of screen width; left/right lanes ±20% away.
+// Centre lane at 50% of screen width; left/right lanes ±32% away. Wide
+// enough that even a 3-4 character Chinese answer board doesn't collide
+// with its neighbour once the game frame is narrow (portrait phone) — a
+// fixed screen-fraction spacing translates to far fewer actual pixels on a
+// narrow frame than on a wide desktop/iPad one, so it has to be generous
+// enough to survive the narrowest case.
 // Shuffled each round so the correct-answer lane appears in a random column.
 // World-space X is computed per-lane from its Z depth + screen fraction
 // via camera unprojection (screenFracToWorldX).
-const LANE_FRACS = [0.3, 0.5, 0.7] as const;
+const LANE_FRACS = [0.18, 0.5, 0.82] as const;
 
 function assignLaneFracs(): number[] {
   return ([...LANE_FRACS] as number[]).sort(() => Math.random() - 0.5);
@@ -948,10 +953,13 @@ export default function SlingshotGame({
         style={{ backgroundImage: "url('/games/angry-cow/bg.png')", backgroundSize: 'cover', backgroundPosition: 'center' }}
       >
         {/* Prompt — large centered banner at the very top of the game frame.
-            Font/padding scale down on narrow phones so it doesn't eat into
-            the vertical space the distance labels below it need. */}
+            Font scales fluidly with viewport width (clamp) instead of
+            fixed breakpoint tiers, so it doesn't eat into the vertical
+            space the distance labels below it need on a narrow phone, but
+            also keeps growing past the old lg: cap on a big iPad instead
+            of plateauing while the box around it keeps getting bigger. */}
         <div className="pointer-events-none absolute inset-x-0 top-1 z-10 flex items-start justify-center px-2 sm:top-3">
-          <div className="max-w-full truncate rounded-xl bg-white/60 px-2 py-1 text-xl font-black text-zinc-900 shadow-lg sm:px-4 sm:py-2 sm:text-3xl md:px-6 md:py-3 md:text-5xl lg:text-[3.6rem]">
+          <div className="max-w-full truncate rounded-xl bg-white/60 px-[2vw] py-[1vw] font-black text-zinc-900 shadow-lg text-[clamp(1.25rem,4.5vw,3.6rem)]">
             {round?.prompt}
           </div>
         </div>
@@ -985,7 +993,7 @@ export default function SlingshotGame({
             ensures identical centering as the shot-distance-pop animation */}
         <div
           ref={skyDistanceRef}
-          className="pointer-events-none absolute whitespace-nowrap text-2xl font-black text-white transition-opacity duration-100 sm:text-3xl md:text-4xl lg:text-5xl"
+          className="pointer-events-none absolute whitespace-nowrap font-black text-white transition-opacity duration-100 text-[clamp(1.5rem,5vw,3rem)]"
           style={{ opacity: 0, left: '50%', top: '15%', transform: 'translate(-50%, -50%)', textShadow: '0 2px 8px rgba(0,0,0,0.55), 0 0 20px rgba(0,0,0,0.3)' }}
         />
 
@@ -1048,7 +1056,7 @@ export default function SlingshotGame({
           return (
             <div
               key={`${target.id}-distance`}
-              className="pointer-events-none absolute whitespace-nowrap rounded-md bg-black/40 px-1 py-0.5 text-xs font-bold text-white sm:px-1.5 sm:text-base md:px-2 md:text-lg lg:text-[23px]"
+              className="pointer-events-none absolute whitespace-nowrap rounded-md bg-black/40 px-[1vw] py-0.5 font-bold text-white text-[clamp(0.7rem,2.2vw,1.45rem)]"
               style={{
                 left: `${pos.x}%`,
                 top: `${pos.y}%`,
@@ -1117,7 +1125,7 @@ export default function SlingshotGame({
           <div
             key={shotDisplay.key}
             onAnimationEnd={() => setShotDisplay(null)}
-            className="shot-distance-pop pointer-events-none absolute whitespace-nowrap text-2xl font-black text-white sm:text-3xl md:text-4xl lg:text-5xl"
+            className="shot-distance-pop pointer-events-none absolute whitespace-nowrap font-black text-white text-[clamp(1.5rem,5vw,3rem)]"
             style={{ left: '50%', top: '15%', textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0 14px rgba(0,0,0,0.4)' }}
           >
             {shotDisplay.value} 公尺

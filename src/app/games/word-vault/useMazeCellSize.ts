@@ -3,7 +3,11 @@ import { MAZE_ROWS, MAZE_COLS } from '@/lib/wordMaze';
 
 export const DEFAULT_CELL_PX = 22;
 const MIN_CELL_PX = 16;
-const MAX_CELL_PX = 30;
+// Raised from 30 — on a spacious iPad landscape viewport the fit-budget
+// math would happily allow bigger cells than 30px, but the old cap silently
+// threw that headroom away and left the maze looking small in the middle
+// of a big screen.
+const MAX_CELL_PX = 44;
 const BREATHING_ROOM_PX = 12;
 const MAZE_FRAME_CHROME_PX = 10; // maze-frame's own border+padding (border-4 + p-1) on top of the grid.
 

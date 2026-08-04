@@ -52,7 +52,7 @@ export default function EnglishMode({ onBack }: { onBack: () => void }) {
         isCorrect: t.isCorrect,
         board: (
           <div className="flex flex-col items-center gap-0.5 sm:gap-1">
-            <div className="rounded-lg bg-white/80 px-1 py-0.5 text-xs text-zinc-900 sm:px-1.5 sm:text-base md:px-2 md:py-1 md:text-xl">
+            <div className="rounded-lg bg-white/80 px-[0.8vw] py-[0.4vw] text-zinc-900 text-[clamp(0.7rem,2.4vw,1.4rem)]">
               <ZhuyinText zh={t.word.zh} zhuyin={t.word.zhuyin} className="font-black" />
             </div>
             <span onPointerDown={(e) => e.stopPropagation()}>
