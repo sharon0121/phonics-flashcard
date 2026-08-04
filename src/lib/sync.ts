@@ -95,6 +95,33 @@ export function startSync(): void {
       const res = await fetch('/api/sync');
       if (!res.ok) return;
       const server = (await res.json()) as unknown;
+      const serverHasData =
+        isSyncState(server) &&
+        (Object.keys(server.progress).length > 0 || Object.keys(server.curriculum).length > 0);
+
+      // A device that has never run sync before starts at updatedAt=0, which
+      // would always lose to *any* existing server record on a plain
+      // timestamp comparison — including a stale/empty one from a device
+      // that just happened to sync first. That would silently wipe out
+      // real progress this device already had. So on a device's first
+      // sync, decide by which SIDE actually has real data instead of by
+      // timestamp: if this device has real progress and the shared record
+      // doesn't yet, this device becomes the new baseline (push up); if the
+      // shared record already has real data, adopt it instead of clobbering
+      // it with this device's own possibly-stale local copy (pull down).
+      if (localStorage.getItem(UPDATED_AT_KEY) === null) {
+        const localHasData =
+          Object.keys(loadProgress()).length > 0 || Object.keys(loadCurriculum()).length > 0;
+        if (localHasData && !serverHasData) {
+          await pushNow();
+        } else if (isSyncState(server) && serverHasData) {
+          applyServerState(server);
+        } else {
+          await pushNow();
+        }
+        return;
+      }
+
       const localUpdatedAt = getLocalUpdatedAt();
       if (isSyncState(server) && server.updatedAt > localUpdatedAt) {
         applyServerState(server);
