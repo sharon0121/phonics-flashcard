@@ -230,9 +230,9 @@ export default function SchulteGame({ category, numberPattern, onBack }: Props) 
                   onClick={() => handleTap(cell)}
                   className={`flex aspect-square items-center justify-center rounded-xl border-2 text-2xl font-extrabold shadow transition-colors sm:text-3xl ${
                     done
-                      ? 'border-emerald-400 bg-emerald-100 text-emerald-400'
+                      ? 'cell-pop border-emerald-400 bg-emerald-100 text-emerald-400'
                       : wrong
-                        ? 'animate-pulse border-red-400 bg-red-100 text-red-500'
+                        ? 'cell-shake border-red-400 bg-red-100 text-red-500'
                         : 'border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100'
                   }`}
                 >

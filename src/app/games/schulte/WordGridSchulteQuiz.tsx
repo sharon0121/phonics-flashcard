@@ -250,9 +250,9 @@ export default function WordGridSchulteQuiz({ onBack }: Props) {
                   disabled={justSolved}
                   className={`flex flex-col items-center justify-center gap-0.5 rounded-2xl border-2 p-2 shadow transition-colors sm:p-3 ${
                     solvedCorrect
-                      ? 'border-emerald-400 bg-emerald-100'
+                      ? 'cell-pop border-emerald-400 bg-emerald-100'
                       : wrong
-                        ? 'animate-pulse border-red-400 bg-red-100'
+                        ? 'cell-shake border-red-400 bg-red-100'
                         : 'border-zinc-300 bg-white hover:bg-zinc-100'
                   }`}
                 >

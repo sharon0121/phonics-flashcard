@@ -17,7 +17,8 @@ import {
 } from '@/data/schulteContent';
 
 type ExtraCategory = 'hanzi' | 'wordGrid';
-type ViewMode = SchulteCategory | ExtraCategory;
+type RealCategory = SchulteCategory | ExtraCategory;
+type ViewMode = RealCategory | 'random';
 
 const CATEGORY_DESC: Record<SchulteCategory, string> = {
   zhuyin: 'ㄅ 到 ㄦ，練習注音符號的視覺搜尋',
@@ -33,7 +34,6 @@ const NUMBER_PATTERN_DESC: Record<NumberPattern, string> = {
   multiplesOf5: '5、10、15⋯⋯數到 125',
 };
 
-const EXTRA_CATEGORY_DISPLAY_ORDER: ExtraCategory[] = ['hanzi', 'wordGrid'];
 const EXTRA_CATEGORY_LABELS: Record<ExtraCategory, string> = {
   hanzi: '國字複習',
   wordGrid: '單字複習',
@@ -47,13 +47,44 @@ const EXTRA_CATEGORY_DESC: Record<ExtraCategory, string> = {
   wordGrid: '聽發音選英文單字，來源可自訂，答錯 3 次或超時就失敗',
 };
 
+// Each category gets its own accent colour so the cards are told apart at
+// a glance instead of all looking like the same gold-bordered tile.
+const CARD_COLORS: Record<RealCategory, { border: string; text: string; bg: string }> = {
+  zhuyin: { border: 'border-red-400', text: 'text-red-300', bg: 'bg-red-500/10' },
+  upper: { border: 'border-blue-400', text: 'text-blue-300', bg: 'bg-blue-500/10' },
+  lower: { border: 'border-emerald-400', text: 'text-emerald-300', bg: 'bg-emerald-500/10' },
+  numbers: { border: 'border-purple-400', text: 'text-purple-300', bg: 'bg-purple-500/10' },
+  hanzi: { border: 'border-cyan-400', text: 'text-cyan-300', bg: 'bg-cyan-500/10' },
+  wordGrid: { border: 'border-amber-400', text: 'text-amber-300', bg: 'bg-amber-500/10' },
+};
+
+const ALL_REAL_CATEGORIES: RealCategory[] = [...CATEGORY_DISPLAY_ORDER, 'hanzi', 'wordGrid'];
+
 function isExtraCategory(v: ViewMode): v is ExtraCategory {
   return v === 'hanzi' || v === 'wordGrid';
+}
+
+interface CardConfig {
+  key: ViewMode;
+  emoji: string;
+  label: string;
+  desc: string;
 }
 
 export default function SchulteView() {
   const [category, setCategory] = useState<ViewMode | null>(null);
   const [numberPattern, setNumberPattern] = useState<NumberPattern | null>(null);
+
+  function pickRandomCategory() {
+    const pick = ALL_REAL_CATEGORIES[Math.floor(Math.random() * ALL_REAL_CATEGORIES.length)];
+    setCategory(pick);
+    if (pick === 'numbers') {
+      const patterns = NUMBER_PATTERN_DISPLAY_ORDER;
+      setNumberPattern(patterns[Math.floor(Math.random() * patterns.length)]);
+    } else {
+      setNumberPattern(null);
+    }
+  }
 
   if (category === 'numbers' && !numberPattern) {
     return (
@@ -80,9 +111,9 @@ export default function SchulteView() {
                 key={p}
                 type="button"
                 onClick={() => setNumberPattern(p)}
-                className="group flex flex-col items-center gap-2 rounded-2xl border-2 border-[var(--hero-gold)] bg-white/10 p-6 text-center shadow-lg transition-all hover:bg-white/20 hover:shadow-xl"
+                className="group flex flex-col items-center gap-2 rounded-2xl border-2 border-purple-400 bg-purple-500/10 p-6 text-center shadow-lg transition-all hover:bg-purple-500/20 hover:shadow-xl"
               >
-                <span className="text-xl font-bold text-[var(--hero-gold)]">{NUMBER_PATTERN_LABELS[p]}</span>
+                <span className="text-xl font-bold text-purple-300">{NUMBER_PATTERN_LABELS[p]}</span>
                 <span className="text-sm leading-relaxed text-zinc-300">{NUMBER_PATTERN_DESC[p]}</span>
               </button>
             ))}
@@ -107,7 +138,7 @@ export default function SchulteView() {
     );
   }
 
-  if (category) {
+  if (category && category !== 'random') {
     return (
       <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 py-8">
         <HeroMascot src="/heroes/cutout-game.png" alt="" />
@@ -124,6 +155,21 @@ export default function SchulteView() {
       </main>
     );
   }
+
+  const cards: CardConfig[] = [
+    ...CATEGORY_DISPLAY_ORDER.map((key) => ({
+      key,
+      emoji: CATEGORY_EMOJI[key],
+      label: CATEGORY_LABELS[key],
+      desc: CATEGORY_DESC[key],
+    })),
+    ...(['hanzi', 'wordGrid'] as ExtraCategory[]).map((key) => ({
+      key,
+      emoji: EXTRA_CATEGORY_EMOJI[key],
+      label: EXTRA_CATEGORY_LABELS[key],
+      desc: EXTRA_CATEGORY_DESC[key],
+    })),
+  ];
 
   return (
     <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 py-8">
@@ -153,30 +199,32 @@ export default function SchulteView() {
         <p className="mt-3 text-sm font-medium text-zinc-300">選一個項目開始練習：</p>
 
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {CATEGORY_DISPLAY_ORDER.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setCategory(key)}
-              className="group flex flex-col items-center gap-2 rounded-2xl border-2 border-[var(--hero-gold)] bg-white/10 p-6 text-center shadow-lg transition-all hover:bg-white/20 hover:shadow-xl"
-            >
-              <span className="text-5xl transition-transform group-hover:scale-110">{CATEGORY_EMOJI[key]}</span>
-              <span className="text-xl font-bold text-[var(--hero-gold)]">{CATEGORY_LABELS[key]}</span>
-              <span className="text-sm leading-relaxed text-zinc-300">{CATEGORY_DESC[key]}</span>
-            </button>
-          ))}
-          {EXTRA_CATEGORY_DISPLAY_ORDER.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setCategory(key)}
-              className="group flex flex-col items-center gap-2 rounded-2xl border-2 border-sky-400 bg-white/10 p-6 text-center shadow-lg transition-all hover:bg-white/20 hover:shadow-xl"
-            >
-              <span className="text-5xl transition-transform group-hover:scale-110">{EXTRA_CATEGORY_EMOJI[key]}</span>
-              <span className="text-xl font-bold text-sky-300">{EXTRA_CATEGORY_LABELS[key]}</span>
-              <span className="text-sm leading-relaxed text-zinc-300">{EXTRA_CATEGORY_DESC[key]}</span>
-            </button>
-          ))}
+          {/* 隨機挑戰 — rainbow gradient border marks it as the wildcard option */}
+          <button
+            type="button"
+            onClick={pickRandomCategory}
+            className="group flex flex-col items-center gap-2 rounded-2xl border-2 border-[var(--hero-gold)] bg-gradient-to-br from-fuchsia-500/15 via-amber-400/15 to-sky-500/15 p-6 text-center shadow-lg transition-all hover:shadow-xl"
+          >
+            <span className="text-5xl transition-transform group-hover:scale-110">🎲</span>
+            <span className="text-xl font-bold text-[var(--hero-gold)]">隨機挑戰</span>
+            <span className="text-sm leading-relaxed text-zinc-300">每次隨機挑一種項目，一下英文一下注音！</span>
+          </button>
+
+          {cards.map((c) => {
+            const colors = CARD_COLORS[c.key as RealCategory];
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setCategory(c.key)}
+                className={`group flex flex-col items-center gap-2 rounded-2xl border-2 ${colors.border} ${colors.bg} p-6 text-center shadow-lg transition-all hover:shadow-xl`}
+              >
+                <span className="text-5xl transition-transform group-hover:scale-110">{c.emoji}</span>
+                <span className={`text-xl font-bold ${colors.text}`}>{c.label}</span>
+                <span className="text-sm leading-relaxed text-zinc-300">{c.desc}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </main>

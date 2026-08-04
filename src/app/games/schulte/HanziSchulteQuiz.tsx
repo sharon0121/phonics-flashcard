@@ -247,9 +247,9 @@ export default function HanziSchulteQuiz({ onBack }: Props) {
                   disabled={justSolved}
                   className={`flex aspect-square items-center justify-center rounded-2xl border-2 text-5xl font-bold shadow transition-colors ${
                     solvedCorrect
-                      ? 'border-emerald-400 bg-emerald-100 text-emerald-600'
+                      ? 'cell-pop border-emerald-400 bg-emerald-100 text-emerald-600'
                       : wrong
-                        ? 'animate-pulse border-red-400 bg-red-100 text-red-500'
+                        ? 'cell-shake border-red-400 bg-red-100 text-red-500'
                         : 'border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100'
                   }`}
                 >
