@@ -127,6 +127,48 @@ export function playClimbSound(): void {
   });
 }
 
+// A punchy noise-burst "boom" for a satisfying hit — layers a short
+// filtered noise crack over a low sine thump so it reads as an impact
+// rather than another bright "ding".
+export function playExplosionSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Noise crack
+  const bufferSize = Math.floor(ctx.sampleRate * 0.25);
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const noiseFilter = ctx.createBiquadFilter();
+  noiseFilter.type = 'lowpass';
+  noiseFilter.frequency.setValueAtTime(3200, now);
+  noiseFilter.frequency.exponentialRampToValueAtTime(300, now + 0.22);
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0.35, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+  noise.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + 0.25);
+
+  // Low thump
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(150, now);
+  osc.frequency.exponentialRampToValueAtTime(45, now + 0.3);
+  gain.gain.setValueAtTime(0.45, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.32);
+}
+
 // A quick descending "thud" for falling down a floor of the ladder.
 export function playFallSound(): void {
   const ctx = getAudioContext();

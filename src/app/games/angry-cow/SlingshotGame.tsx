@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { playCollectSound, playErrorSound, playDingSound } from '@/lib/sound';
+import { playCollectSound, playErrorSound, playDingSound, playExplosionSound, playCelebrationChime } from '@/lib/sound';
 
 export interface SlingshotTarget {
   id: string;
@@ -38,6 +38,16 @@ const SHOOT_BAR_INSET_PCT = 4;
 const OSCILLATE_PERIOD_MS = 3200;
 const DISTANCE_TOLERANCE = 100;
 const DISTANCE_MIN_GAP = 210;
+
+// How long the player has to start aiming before a round times out (counts
+// as a miss and costs a life) — adds time pressure so the game doesn't stay
+// untimed/low-stakes while the player decides.
+const ROUND_TIME_MS = 12000;
+
+// Consecutive-correct-answer streak thresholds that unlock a flashier
+// projectile — resets to the plain ball on any wrong answer or timeout.
+const STREAK_TIER_SPIKY = 5;
+const STREAK_TIER_AXE = 10;
 
 function currentPowerValue(elapsedMs: number): number {
   const half = OSCILLATE_PERIOD_MS / 2;
@@ -230,6 +240,88 @@ function createGiraffe3D(): THREE.Group {
 
   return grp;
 }
+type ProjectileTier = 'ball' | 'spiky' | 'axe';
+
+function projectileTierForStreak(streak: number): ProjectileTier {
+  if (streak >= STREAK_TIER_AXE) return 'axe';
+  if (streak >= STREAK_TIER_SPIKY) return 'spiky';
+  return 'ball';
+}
+
+// The 12 canonical icosahedron vertex directions — used to plant the spiky
+// ball's thorns evenly around its surface without needing to introspect a
+// built geometry's vertex buffer at runtime.
+const PHI = (1 + Math.sqrt(5)) / 2;
+const ICOSA_DIRS: [number, number, number][] = (
+  [
+    [0, 1, PHI], [0, -1, PHI], [0, 1, -PHI], [0, -1, -PHI],
+    [1, PHI, 0], [-1, PHI, 0], [1, -PHI, 0], [-1, -PHI, 0],
+    [PHI, 0, 1], [-PHI, 0, 1], [PHI, 0, -1], [-PHI, 0, -1],
+  ] as [number, number, number][]
+).map(([x, y, z]) => {
+  const len = Math.hypot(x, y, z);
+  return [x / len, y / len, z / len];
+});
+
+function disposeObject3D(obj: THREE.Object3D): void {
+  obj.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+      if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+      else child.material.dispose();
+    }
+  });
+}
+
+// Builds the projectile's visual for a given streak tier. Always returns a
+// Group (even for the plain ball) so callers don't need to special-case the
+// object type when swapping tiers in/out of the scene.
+function createProjectileVisual(tier: ProjectileTier): THREE.Group {
+  const group = new THREE.Group();
+
+  if (tier === 'ball') {
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 24, 18),
+      new THREE.MeshStandardMaterial({ color: PROJECTILE_COLOR, metalness: 0.4, roughness: 0.06 }),
+    );
+    group.add(ball);
+    return group;
+  }
+
+  if (tier === 'spiky') {
+    const core = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.2, 1),
+      new THREE.MeshStandardMaterial({ color: 0xff6a00, metalness: 0.3, roughness: 0.35, flatShading: true }),
+    );
+    group.add(core);
+    const spikeGeo = new THREE.ConeGeometry(0.045, 0.16, 8);
+    const spikeMat = new THREE.MeshStandardMaterial({ color: 0xffcc33, metalness: 0.5, roughness: 0.2 });
+    for (const [dx, dy, dz] of ICOSA_DIRS) {
+      const spike = new THREE.Mesh(spikeGeo, spikeMat);
+      const dir = new THREE.Vector3(dx, dy, dz);
+      spike.position.copy(dir.clone().multiplyScalar(0.2));
+      spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      group.add(spike);
+    }
+    return group;
+  }
+
+  // Axe: a simple handle + blade silhouette — plenty legible at the small,
+  // fast-moving size this renders at without needing a full model pipeline.
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0x6b3f1a, roughness: 0.8 });
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, 0.5, 8), handleMat);
+  group.add(handle);
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0xc8ccd4, metalness: 0.7, roughness: 0.25 });
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.2), bladeMat);
+  blade.position.set(0, 0.2, 0.05);
+  group.add(blade);
+  const edgeMat = new THREE.MeshStandardMaterial({ color: 0xeef1f5, metalness: 0.8, roughness: 0.15 });
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.24, 0.22), edgeMat);
+  edge.position.set(0.04, 0.2, 0.06);
+  group.add(edge);
+  return group;
+}
+
 const FLIGHT_MS = 850;
 const RESULT_PAUSE_MS = 1000;
 const MISS_PAUSE_MS = 550;
@@ -311,7 +403,7 @@ export default function SlingshotGame({
   const [lives, setLives] = useState(startLives);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
-  const [hitFlash, setHitFlash] = useState<'none' | 'correct' | 'wrong'>('none');
+  const [hitFlash, setHitFlash] = useState<'none' | 'correct' | 'wrong' | 'timeout'>('none');
   const [nameInput, setNameInput] = useState(lastPlayerName);
   const [renamed, setRenamed] = useState(false);
   const [boardScreenPos, setBoardScreenPos] = useState<Array<{ x: number; y: number } | null>>([null, null, null]);
@@ -324,6 +416,10 @@ export default function SlingshotGame({
   const [chargingLane, setChargingLane] = useState<number | null>(null);
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
   const [shotDisplay, setShotDisplay] = useState<{ value: number; key: number } | null>(null);
+  const [streak, setStreak] = useState(0);
+  const [timeLeftSec, setTimeLeftSec] = useState(ROUND_TIME_MS / 1000);
+  const [tierUpBanner, setTierUpBanner] = useState<{ text: string; key: number } | null>(null);
+  const [burstKey, setBurstKey] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const powerFillRef = useRef<HTMLDivElement>(null);
@@ -340,13 +436,21 @@ export default function SlingshotGame({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const worldRef = useRef<CANNON.World | null>(null);
   const lanesRef = useRef<LaneObjects[]>([]);
-  const projectileRef = useRef<THREE.Mesh | null>(null);
+  const projectileRef = useRef<THREE.Group | null>(null);
+  const projectileTierRef = useRef<ProjectileTier>('ball');
   const ballBodyRef   = useRef<CANNON.Body | null>(null);
 
   const roundRef = useRef(round);
   const livesRef = useRef(lives);
   const scoreRef = useRef(score);
+  const streakRef = useRef(streak);
+  const gameOverRef = useRef(gameOver);
   const savedIdRef = useRef<string | null>(null);
+  // Deadline for the current "idle, waiting for the player to aim" window —
+  // reset whenever a fresh round starts; a countdown past this triggers a
+  // timeout miss. Initialised on mount (matches the round the initial
+  // useState already built).
+  const roundDeadlineRef = useRef(0);
 
   const phaseRef = useRef<ShotPhase>('idle');
   const chargeStartRef = useRef(0);
@@ -440,6 +544,12 @@ export default function SlingshotGame({
   useEffect(() => {
     scoreRef.current = score;
   }, [score]);
+  useEffect(() => {
+    streakRef.current = streak;
+  }, [streak]);
+  useEffect(() => {
+    gameOverRef.current = gameOver;
+  }, [gameOver]);
 
   // Removes this round's lane meshes/bodies from the scene/world.
   const clearLanes = useCallback(() => {
@@ -622,13 +732,11 @@ export default function SlingshotGame({
     fill.position.set(0, 4, -6);
     scene.add(fill);
 
-    const projectileMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 24, 18),
-      new THREE.MeshStandardMaterial({ color: PROJECTILE_COLOR, metalness: 0.4, roughness: 0.06 }),
-    );
-    projectileMesh.visible = false;
-    scene.add(projectileMesh);
-    projectileRef.current = projectileMesh;
+    const projectileGroup = createProjectileVisual('ball');
+    projectileGroup.visible = false;
+    scene.add(projectileGroup);
+    projectileRef.current = projectileGroup;
+    projectileTierRef.current = 'ball';
 
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
     const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
@@ -648,10 +756,12 @@ export default function SlingshotGame({
     }
     resize();
     buildLanes();
+    roundDeadlineRef.current = performance.now() + ROUND_TIME_MS;
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(container);
 
     let lastT = performance.now();
+    let lastDisplayedSec = -1;
     let rafId: number;
     function tick() {
       const now = performance.now();
@@ -673,6 +783,20 @@ export default function SlingshotGame({
         }
       } else if (skyDistanceRef.current) {
         skyDistanceRef.current.style.opacity = '0';
+      }
+
+      // Round countdown — only ticks while waiting for the player to start
+      // aiming; once they're charging/flying/resolving there's no separate
+      // time limit (the oscillating power bar already forces a timely
+      // release for accuracy).
+      if (phaseRef.current === 'idle' && !gameOverRef.current) {
+        const remainingMs = roundDeadlineRef.current - now;
+        const sec = Math.max(0, Math.ceil(remainingMs / 1000));
+        if (sec !== lastDisplayedSec) {
+          lastDisplayedSec = sec;
+          setTimeLeftSec(sec);
+        }
+        if (remainingMs <= 0) handleTimeout();
       }
 
       // Kinematic projectile flight tween.
@@ -806,13 +930,17 @@ export default function SlingshotGame({
     if (target?.isCorrect) {
       setScore((s) => s + 10);
       setHitFlash('correct');
+      setBurstKey(performance.now());
       playCollectSound();
+      playExplosionSound();
       window.setTimeout(() => playDingSound(), 120);
+      registerStreakHit();
     } else {
       const nextLives = livesRef.current - 1;
       setLives(nextLives);
       setHitFlash('wrong');
       playErrorSound();
+      resetStreak();
       if (nextLives <= 0) {
         pendingAdvanceKindRef.current = 'gameOver';
         pendingAdvanceAtRef.current = performance.now() + 2800;
@@ -825,10 +953,47 @@ export default function SlingshotGame({
     }
   }
 
+  // Consecutive-correct-hit streak — drives the projectile tier upgrades.
+  // Reset on any wrong answer or timeout, not just game over, so the
+  // player has to keep a clean run going to hang on to the flashier ball.
+  function registerStreakHit() {
+    const next = streakRef.current + 1;
+    streakRef.current = next;
+    setStreak(next);
+    if (next === STREAK_TIER_SPIKY) {
+      setTierUpBanner({ text: '🔥 長刺球解鎖！', key: performance.now() });
+      playCelebrationChime();
+    } else if (next === STREAK_TIER_AXE) {
+      setTierUpBanner({ text: '🪓 斧頭解鎖！', key: performance.now() });
+      playCelebrationChime();
+    }
+  }
+
+  function resetStreak() {
+    streakRef.current = 0;
+    setStreak(0);
+  }
+
+  // Ran out of time before the player even started aiming this round —
+  // treated the same as a wrong answer (costs a life, breaks the streak)
+  // but with a shorter pause since there's no shot/physics to watch settle.
+  function handleTimeout() {
+    if (phaseRef.current !== 'idle') return;
+    phaseRef.current = 'resolving';
+    setHitFlash('timeout');
+    playErrorSound();
+    resetStreak();
+    const nextLives = livesRef.current - 1;
+    setLives(nextLives);
+    pendingAdvanceKindRef.current = nextLives <= 0 ? 'gameOver' : 'nextRound';
+    pendingAdvanceAtRef.current = performance.now() + 1200;
+  }
+
   function advanceRound() {
     setHitFlash('none');
     setRound(makeRound());
     buildLanes();
+    roundDeadlineRef.current = performance.now() + ROUND_TIME_MS;
     phaseRef.current = 'idle';
   }
 
@@ -906,6 +1071,22 @@ export default function SlingshotGame({
 
     const to = new THREE.Vector3(launchX, landingY, landingZ);
 
+    // Swap the projectile's visual if the streak has crossed into a new
+    // tier since the last shot — done here (once per shot) rather than
+    // reactively on every streak change, so mid-round state stays simple.
+    const desiredTier = projectileTierForStreak(streakRef.current);
+    if (desiredTier !== projectileTierRef.current) {
+      const scene = sceneRef.current;
+      if (scene && projectileRef.current) {
+        scene.remove(projectileRef.current);
+        disposeObject3D(projectileRef.current);
+      }
+      const nextProjectile = createProjectileVisual(desiredTier);
+      scene?.add(nextProjectile);
+      projectileRef.current = nextProjectile;
+      projectileTierRef.current = desiredTier;
+    }
+
     if (projectileRef.current) {
       projectileRef.current.visible = true;
       projectileRef.current.position.copy(LAUNCH_POS);
@@ -925,9 +1106,11 @@ export default function SlingshotGame({
     setGameOver(false);
     setRenamed(false);
     setHitFlash('none');
+    resetStreak();
     savedIdRef.current = null;
     setRound(makeRound());
     buildLanes();
+    roundDeadlineRef.current = performance.now() + ROUND_TIME_MS;
     phaseRef.current = 'idle';
   }
 
@@ -943,12 +1126,20 @@ export default function SlingshotGame({
           {'❤️'.repeat(Math.max(lives, 0))}
           {'🖤'.repeat(Math.max(startLives - lives, 0))}
         </span>
+        {streak >= 2 && (
+          <span className="text-orange-400">🔥 連擊 x{streak}</span>
+        )}
+        {chargingLane === null && !gameOver && (
+          <span className={timeLeftSec <= 3 ? 'animate-pulse text-[var(--hero-red)]' : ''}>
+            ⏱️ {timeLeftSec}s
+          </span>
+        )}
         <span>🎯 得分 {score}</span>
       </div>
 
       <div
         className={`relative mx-auto mt-3 aspect-[4/3] w-full overflow-hidden rounded-xl border-[6px] border-slate-400 ${
-          hitFlash === 'wrong' ? 'stage-shake' : ''
+          hitFlash === 'wrong' || hitFlash === 'timeout' || hitFlash === 'correct' ? 'stage-shake' : ''
         }`}
         style={{ backgroundImage: "url('/games/angry-cow/bg.png')", backgroundSize: 'cover', backgroundPosition: 'center' }}
       >
@@ -1100,7 +1291,31 @@ export default function SlingshotGame({
 
         {hitFlash === 'correct' && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-emerald-300/20">
-            <span className="text-6xl">🎉</span>
+            <span className="text-6xl">🎉💥</span>
+          </div>
+        )}
+
+        {hitFlash === 'timeout' && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-red-500/10">
+            <span className="rounded-xl bg-black/60 px-4 py-2 text-3xl font-black text-white">⏰ 時間到！</span>
+          </div>
+        )}
+
+        {burstKey && (
+          <div
+            key={burstKey}
+            onAnimationEnd={() => setBurstKey(null)}
+            className="hit-burst-ring pointer-events-none absolute top-1/2 left-1/2 h-40 w-40 rounded-full border-8 border-yellow-300"
+          />
+        )}
+
+        {tierUpBanner && (
+          <div
+            key={tierUpBanner.key}
+            onAnimationEnd={() => setTierUpBanner(null)}
+            className="tier-up-pop pointer-events-none absolute top-1/3 left-1/2 z-20 whitespace-nowrap rounded-2xl bg-black/70 px-5 py-3 text-2xl font-black text-yellow-300 shadow-lg"
+          >
+            {tierUpBanner.text}
           </div>
         )}
 
@@ -1167,7 +1382,9 @@ export default function SlingshotGame({
         )}
       </div>
 
-      <p className="mt-3 text-center text-xs text-zinc-400">按住想射擊的目標蓄力，放手發射！力量表對到目標的距離才會命中。</p>
+      <p className="mt-3 text-center text-xs text-zinc-400">
+        按住想射擊的目標蓄力，放手發射！力量表對到目標的距離才會命中。時間到之前要出手，連續答對還能解鎖更酷的投擲物！
+      </p>
     </div>
   );
 }

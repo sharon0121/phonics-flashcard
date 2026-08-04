@@ -452,3 +452,48 @@ body {
   animation: shot-distance-pop 2s ease-out forwards;
 }
 
+/* ------------------------------------------------------------------ */
+/* 憤怒牛：命中爆炸環＋連擊解鎖橫幅                                        */
+/* ------------------------------------------------------------------ */
+
+@keyframes hit-burst-ring {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.2);
+    box-shadow: 0 0 0 0 rgba(255, 210, 60, 0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 0 40px 30px rgba(255, 210, 60, 0);
+  }
+}
+.hit-burst-ring {
+  animation: hit-burst-ring 0.55s ease-out forwards;
+}
+
+@keyframes tier-up-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4) rotate(-6deg);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15) rotate(3deg);
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.1) rotate(0deg);
+  }
+}
+.tier-up-pop {
+  animation: tier-up-pop 1.8s ease-out forwards;
+}
+
