@@ -857,13 +857,15 @@ export default function HeroClimbView() {
               )}
             </div>
 
-            {boosting && (
-              <div className="mt-1.5 flex justify-center">
-                <span className="animate-pulse rounded-full bg-amber-400/20 px-2.5 py-0.5 text-xs font-bold text-amber-300">
-                  ⚡ 加速中
-                </span>
-              </div>
-            )}
+            {/* Always occupies its layout space (opacity toggles instead of
+                mount/unmount) — conditionally rendering this pushed the
+                entire game stage below it down/up by its height the moment
+                a boost started or ended, which read as the screen jittering. */}
+            <div className={`mt-1.5 flex justify-center ${boosting ? 'opacity-100' : 'opacity-0'}`}>
+              <span className="animate-pulse rounded-full bg-amber-400/20 px-2.5 py-0.5 text-xs font-bold text-amber-300">
+                ⚡ 加速中
+              </span>
+            </div>
 
             <div className="mt-3 flex items-center justify-center gap-1.5">
               {target.word.toUpperCase().split('').map((ch, i) => (
