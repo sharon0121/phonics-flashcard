@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { words as PHONICS_WORDS } from '@/data/words';
 import { sightWords as SIGHT_WORDS } from '@/data/sightWords';
 import type { Word } from '@/lib/types';
-import { useCurriculum, getCurrentWeekKey } from '@/lib/curriculum';
+import { useCurriculum, getCurrentWeekKey, getActiveWordIds } from '@/lib/curriculum';
 import { useProgress } from '@/lib/progress';
 import { useCustomWords } from '@/lib/customWords';
 import { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, type WordSourceKey } from '@/lib/heroClimbSettings';
@@ -184,7 +184,7 @@ export function useAngryCowWordPools(): Word[][] {
   const sources = useAngryCowWordSources();
 
   const weekKey = getCurrentWeekKey();
-  const weekIds = new Set(curriculum[weekKey] ?? []);
+  const weekIds = new Set(getActiveWordIds(curriculum, progress, weekKey));
   const weekWords = weekIds.size > 0 ? PHONICS_WORDS.filter((w) => weekIds.has(w.id)) : EMPTY_WORDS;
   const reinforcementWords = [...PHONICS_WORDS, ...SIGHT_WORDS].filter((w) => progress[w.id]?.needsReinforcement === true);
 

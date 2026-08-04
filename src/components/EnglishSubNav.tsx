@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMemo } from 'react';
-import { useCurriculum, getCurrentWeekKey } from '@/lib/curriculum';
+import { useCurriculum, getCurrentWeekKey, getActiveWordIds } from '@/lib/curriculum';
 import { useProgress } from '@/lib/progress';
 import { words as allPhonicsWords } from '@/data/words';
 import { sightWords as allSightWords } from '@/data/sightWords';
@@ -21,7 +21,10 @@ export default function EnglishSubNav() {
   const pathname = usePathname();
   const curriculum = useCurriculum();
   const progress = useProgress();
-  const thisWeekCount = useMemo(() => (curriculum[getCurrentWeekKey()] ?? []).length, [curriculum]);
+  const thisWeekCount = useMemo(
+    () => getActiveWordIds(curriculum, progress, getCurrentWeekKey()).length,
+    [curriculum, progress],
+  );
   const reinforceCount = useMemo(
     () => [...allPhonicsWords, ...allSightWords].filter((w) => progress[w.id]?.needsReinforcement && !progress[w.id]?.canUnderstand).length,
     [progress],

@@ -29,7 +29,7 @@ function getServerSnapshot(): ProgressMap {
   return EMPTY_PROGRESS;
 }
 
-function subscribe(callback: () => void): () => void {
+export function subscribe(callback: () => void): () => void {
   listeners.add(callback);
   window.addEventListener('storage', callback);
   return () => {

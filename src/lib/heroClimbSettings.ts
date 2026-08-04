@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { words as PHONICS_WORDS } from '@/data/words';
 import { sightWords as SIGHT_WORDS } from '@/data/sightWords';
 import type { Word } from '@/lib/types';
-import { useCurriculum, getCurrentWeekKey } from '@/lib/curriculum';
+import { useCurriculum, getCurrentWeekKey, getActiveWordIds } from '@/lib/curriculum';
 import { useProgress } from '@/lib/progress';
 
 const SPEECH_RATE_KEY = 'hero_climb_speech_rate';
@@ -143,8 +143,9 @@ export function setSpeechRate(rate: SpeechRate): void {
 // ladder option cards, unlike the maze game's trimmed-down MazeWord).
 export function useThisWeekClimbWords(): Word[] {
   const curriculum = useCurriculum();
+  const progress = useProgress();
   const weekKey = getCurrentWeekKey();
-  const ids = new Set(curriculum[weekKey] ?? []);
+  const ids = new Set(getActiveWordIds(curriculum, progress, weekKey));
   if (ids.size === 0) return EMPTY_WORDS;
   const result = PHONICS_WORDS.filter((w) => ids.has(w.id));
   return result.length > 0 ? result : EMPTY_WORDS;

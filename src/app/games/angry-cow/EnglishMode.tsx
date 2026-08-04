@@ -51,12 +51,12 @@ export default function EnglishMode({ onBack }: { onBack: () => void }) {
         id: t.id,
         isCorrect: t.isCorrect,
         board: (
-          <div className="flex flex-col items-center gap-1">
-            <div className="rounded-lg bg-white/80 px-2 py-1 text-zinc-900">
+          <div className="flex flex-col items-center gap-0.5 sm:gap-1">
+            <div className="rounded-lg bg-white/80 px-1 py-0.5 text-xs text-zinc-900 sm:px-1.5 sm:text-base md:px-2 md:py-1 md:text-xl">
               <ZhuyinText zh={t.word.zh} zhuyin={t.word.zhuyin} className="font-black" />
             </div>
             <span onPointerDown={(e) => e.stopPropagation()}>
-              <SpeakButton text={t.word.zh} lang="zh-TW" rate={rate} className="!p-1" />
+              <SpeakButton text={t.word.zh} lang="zh-TW" rate={rate} className="!p-0.5 sm:!p-1" />
             </span>
           </div>
         ),

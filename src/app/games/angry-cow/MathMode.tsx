@@ -39,7 +39,7 @@ export default function MathMode({ onBack }: { onBack: () => void }) {
       targets: round.targets.map((t) => ({
         id: t.id,
         isCorrect: t.isCorrect,
-        board: <span className="px-1 text-xl font-extrabold text-zinc-900">{t.value}</span>,
+        board: <span className="px-1 text-base font-extrabold text-zinc-900 sm:text-lg md:text-xl">{t.value}</span>,
       })),
     };
   }, []);

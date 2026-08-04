@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { ProgressMap } from './types';
 
 // Week keys are the ISO date (YYYY-MM-DD) of that week's Monday. Plain
 // string comparison then sorts/compares weeks correctly (no ISO week-number
@@ -33,7 +34,7 @@ function getServerSnapshot(): CurriculumMap {
   return EMPTY_CURRICULUM;
 }
 
-function subscribe(callback: () => void): () => void {
+export function subscribe(callback: () => void): () => void {
   listeners.add(callback);
   window.addEventListener('storage', callback);
   return () => {
@@ -149,6 +150,20 @@ export function getTaughtWordIds(curriculum: CurriculumMap, uptoWeekKey: string)
     }
   }
   return ids;
+}
+
+// Word ids assigned in any week up to and including `uptoWeekKey` that
+// haven't been marked "已學會" (canUnderstand) yet — this is what should
+// actually show up as "本週單字" for practice/games, since anything picked
+// in an earlier week keeps carrying forward until it's learned, not just
+// for the one week it was originally selected in.
+export function getActiveWordIds(
+  curriculum: CurriculumMap,
+  progress: ProgressMap,
+  uptoWeekKey: string
+): string[] {
+  const taught = getTaughtWordIds(curriculum, uptoWeekKey);
+  return Array.from(taught).filter((id) => !progress[id]?.canUnderstand);
 }
 
 // All word ids assigned in weeks within [fromWeekKey, toWeekKey], inclusive.

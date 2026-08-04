@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { MAZE_WORDS, type MazeWord } from '@/data/wordMazeWords';
 import { words as PHONICS_WORDS } from '@/data/words';
-import { useCurriculum, getCurrentWeekKey } from '@/lib/curriculum';
+import { useCurriculum, getCurrentWeekKey, getActiveWordIds } from '@/lib/curriculum';
+import { useProgress } from '@/lib/progress';
 
 const CUSTOM_KEY = 'custom_maze_words';
 const DISABLED_KEY = 'disabled_maze_word_ids';
@@ -95,17 +96,33 @@ function readTunnelMode(): boolean {
   return cachedTunnelMode;
 }
 
+let cachedLearnedRaw: string | null = null;
+let cachedLearnedWords: MazeWord[] = EMPTY_WORDS;
+
+// Must return the SAME array reference when the underlying storage hasn't
+// changed — useSyncExternalStore compares snapshots by reference, and a
+// fresh array on every call (as this used to build unconditionally) makes
+// React treat it as a perpetually-changing store, forcing endless re-renders.
+// That's cheap enough to go unnoticed on a fast machine but pins a phone's
+// CPU and can crash the tab.
 function readLearnedMazeWords(): MazeWord[] {
   const raw = localStorage.getItem('phonics_progress');
-  if (!raw) return EMPTY_WORDS;
+  if (raw === cachedLearnedRaw) return cachedLearnedWords;
+  cachedLearnedRaw = raw;
+  if (!raw) {
+    cachedLearnedWords = EMPTY_WORDS;
+    return cachedLearnedWords;
+  }
   try {
     const progress = JSON.parse(raw) as Record<string, { canUnderstand?: boolean }>;
     const result = PHONICS_WORDS
       .filter((w) => w.word.length >= 3 && w.word.length <= 8 && progress[w.id]?.canUnderstand === true)
       .map((w) => ({ word: w.word.toUpperCase(), zh: w.zh, emoji: w.emoji }));
-    return result.length > 0 ? result : EMPTY_WORDS;
+    cachedLearnedWords = result.length > 0 ? result : EMPTY_WORDS;
+    return cachedLearnedWords;
   } catch {
-    return EMPTY_WORDS;
+    cachedLearnedWords = EMPTY_WORDS;
+    return cachedLearnedWords;
   }
 }
 
@@ -158,8 +175,9 @@ export function useLearnedMazeWords(): MazeWord[] {
 // the maze/puzzle UI — no length restriction, whatever's assigned this week.
 export function useThisWeekMazeWords(): MazeWord[] {
   const curriculum = useCurriculum();
+  const progress = useProgress();
   const weekKey = getCurrentWeekKey();
-  const ids = new Set(curriculum[weekKey] ?? []);
+  const ids = new Set(getActiveWordIds(curriculum, progress, weekKey));
   if (ids.size === 0) return EMPTY_WORDS;
   return PHONICS_WORDS.filter((w) => ids.has(w.id)).map((w) => ({
     word: w.word.toUpperCase(),

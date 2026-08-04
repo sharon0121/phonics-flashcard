@@ -947,9 +947,11 @@ export default function SlingshotGame({
         }`}
         style={{ backgroundImage: "url('/games/angry-cow/bg.png')", backgroundSize: 'cover', backgroundPosition: 'center' }}
       >
-        {/* Prompt — large centered banner at the very top of the game frame */}
-        <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex items-start justify-center">
-          <div className="rounded-xl bg-white/60 px-6 py-3 text-[3.6rem] font-black text-zinc-900 shadow-lg">
+        {/* Prompt — large centered banner at the very top of the game frame.
+            Font/padding scale down on narrow phones so it doesn't eat into
+            the vertical space the distance labels below it need. */}
+        <div className="pointer-events-none absolute inset-x-0 top-1 z-10 flex items-start justify-center px-2 sm:top-3">
+          <div className="max-w-full truncate rounded-xl bg-white/60 px-2 py-1 text-xl font-black text-zinc-900 shadow-lg sm:px-4 sm:py-2 sm:text-3xl md:px-6 md:py-3 md:text-5xl lg:text-[3.6rem]">
             {round?.prompt}
           </div>
         </div>
@@ -983,7 +985,7 @@ export default function SlingshotGame({
             ensures identical centering as the shot-distance-pop animation */}
         <div
           ref={skyDistanceRef}
-          className="pointer-events-none absolute whitespace-nowrap text-5xl font-black text-white transition-opacity duration-100"
+          className="pointer-events-none absolute whitespace-nowrap text-2xl font-black text-white transition-opacity duration-100 sm:text-3xl md:text-4xl lg:text-5xl"
           style={{ opacity: 0, left: '50%', top: '15%', transform: 'translate(-50%, -50%)', textShadow: '0 2px 8px rgba(0,0,0,0.55), 0 0 20px rgba(0,0,0,0.3)' }}
         />
 
@@ -1046,7 +1048,7 @@ export default function SlingshotGame({
           return (
             <div
               key={`${target.id}-distance`}
-              className="pointer-events-none absolute whitespace-nowrap rounded-md bg-black/40 px-2 py-0.5 text-[23px] font-bold text-white"
+              className="pointer-events-none absolute whitespace-nowrap rounded-md bg-black/40 px-1 py-0.5 text-xs font-bold text-white sm:px-1.5 sm:text-base md:px-2 md:text-lg lg:text-[23px]"
               style={{
                 left: `${pos.x}%`,
                 top: `${pos.y}%`,
@@ -1115,7 +1117,7 @@ export default function SlingshotGame({
           <div
             key={shotDisplay.key}
             onAnimationEnd={() => setShotDisplay(null)}
-            className="shot-distance-pop pointer-events-none absolute whitespace-nowrap text-5xl font-black text-white"
+            className="shot-distance-pop pointer-events-none absolute whitespace-nowrap text-2xl font-black text-white sm:text-3xl md:text-4xl lg:text-5xl"
             style={{ left: '50%', top: '15%', textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0 14px rgba(0,0,0,0.4)' }}
           >
             {shotDisplay.value} 公尺

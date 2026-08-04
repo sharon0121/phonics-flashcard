@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { words as allPhonicsWords } from '@/data/words';
 import { sightWords } from '@/data/sightWords';
 import { useProgress } from '@/lib/progress';
-import { useCurriculum, getCurrentWeekKey, getWeekRangeLabel } from '@/lib/curriculum';
+import { useCurriculum, getCurrentWeekKey, getWeekRangeLabel, getActiveWordIds } from '@/lib/curriculum';
 import EnglishSubNav from '@/components/EnglishSubNav';
 import HeroMascot from '@/components/HeroMascot';
 
@@ -15,7 +15,10 @@ export default function EnglishHome() {
 
   const weekKey = getCurrentWeekKey();
   const weekRange = getWeekRangeLabel(weekKey);
-  const thisWeekIds = useMemo(() => curriculum[weekKey] ?? [], [curriculum, weekKey]);
+  const thisWeekIds = useMemo(
+    () => getActiveWordIds(curriculum, progress, weekKey),
+    [curriculum, progress, weekKey],
+  );
   const phonicsThisWeek = useMemo(
     () => allPhonicsWords.filter((w) => thisWeekIds.includes(w.id)).length,
     [thisWeekIds],
