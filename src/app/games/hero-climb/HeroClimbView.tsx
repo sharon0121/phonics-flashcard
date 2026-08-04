@@ -38,6 +38,7 @@ import {
 } from '@/lib/sound';
 import HeroMascot from '@/components/HeroMascot';
 import ZhuyinText from '@/components/ZhuyinText';
+import HeroClimbSpellPhase from './HeroClimbSpellPhase';
 import LeaderboardPanel from './LeaderboardPanel';
 
 const START_LIVES = 5;
@@ -233,6 +234,9 @@ export default function HeroClimbView() {
   const [maxDepth, setMaxDepth] = useState(0);
   const [wordsCompletedCount, setWordsCompletedCount] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
+  // Within a "celebrating" pause: false = still spelling the word from the
+  // shuffled letters, true = spelling solved, showing the reveal+narration.
+  const [spellSolved, setSpellSolved] = useState(false);
   const [caughtFlash, setCaughtFlash] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [nameInput, setNameInput] = useState(lastPlayerName);
@@ -343,12 +347,21 @@ export default function HeroClimbView() {
     setBoosting(true);
   }, []);
 
+  // All letters collected on the ladder — pause the fall and show the
+  // spelling puzzle first (word-vault-style: letters reshuffled, spell from
+  // memory/by ear). The reveal + narration + advance-to-next-word flow that
+  // used to run immediately now runs once the puzzle is actually solved.
   const completeWord = useCallback(() => {
     celebratingRef.current = true;
     setCelebrating(true);
-    playCelebrationChime();
+    setSpellSolved(false);
     wordsCompletedRef.current += 1;
     setWordsCompletedCount(wordsCompletedRef.current);
+  }, []);
+
+  const handleSpellSolved = useCallback(() => {
+    setSpellSolved(true);
+    playCelebrationChime();
 
     // Called once all speech finishes (or immediately if speech is unavailable).
     // The `done` flag prevents double-firing when the safety timer and onend race.
@@ -726,6 +739,7 @@ export default function HeroClimbView() {
     setWordsCompletedCount(0);
     setCelebrating(false);
     celebratingRef.current = false;
+    setSpellSolved(false);
     setCaughtFlash(false);
     pausedRef.current = false;
     setPaused(false);
@@ -936,7 +950,16 @@ export default function HeroClimbView() {
                 </div>
               )}
 
-              {celebrating && (
+              {celebrating && !spellSolved && (
+                <HeroClimbSpellPhase
+                  key={target.word}
+                  word={target.word.toUpperCase()}
+                  speechRate={SPEECH_RATE_VALUES[speechRate]}
+                  onSolved={handleSpellSolved}
+                />
+              )}
+
+              {celebrating && spellSolved && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/75 text-center">
                   <p className="text-lg font-bold text-[var(--hero-gold)]">🎉 拼出單字了！</p>
                   <span className="text-5xl">{target.emoji}</span>
