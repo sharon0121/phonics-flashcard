@@ -1,28 +1,22 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { MAZE_WORDS } from '@/data/wordMazeWords';
 import {
-  useCustomMazeWords,
-  useDisabledMazeWordIds,
   useGhostCount,
   useGhostSpeed,
-  useWordSource,
-  useThisWeekMazeWords,
-  useLearnedMazeWords,
+  useMazeWordSources,
   useTunnelMode,
-  addCustomMazeWord,
-  removeCustomMazeWord,
-  toggleBuiltinMazeWord,
-  enableAllBuiltinMazeWords,
   setGhostCount,
   setGhostSpeed,
-  setWordSource,
+  setMazeWordSources,
   setTunnelMode,
   MIN_GHOST_COUNT,
   MAX_GHOST_COUNT,
+  WORD_SOURCE_LABELS,
+  WORD_SOURCE_DISPLAY_ORDER,
+  ALL_WORD_SOURCES,
   type GhostSpeed,
+  type WordSourceKey,
 } from '@/lib/wordVaultSettings';
 import { useBestCompletions, removeCompletion } from '@/lib/wordVaultHistory';
 
@@ -38,34 +32,15 @@ const SPEED_OPTIONS: { value: GhostSpeed; label: string }[] = [
 ];
 
 export default function WordVaultSettingsView() {
-  const customWords = useCustomMazeWords();
-  const disabledIds = useDisabledMazeWordIds();
   const ghostCount = useGhostCount();
   const ghostSpeed = useGhostSpeed();
-  const wordSource = useWordSource();
-  const weekWords = useThisWeekMazeWords();
-  const learnedWords = useLearnedMazeWords();
+  const wordSources = useMazeWordSources();
   const tunnelMode = useTunnelMode();
   const bestCompletions = useBestCompletions();
 
-  const [word, setWord] = useState('');
-  const [zh, setZh] = useState('');
-  const [emoji, setEmoji] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const enabledBuiltinCount = MAZE_WORDS.length - disabledIds.length;
-  const totalActiveCount = enabledBuiltinCount + customWords.length;
-
-  function handleAdd() {
-    const result = addCustomMazeWord(word, zh, emoji);
-    if (!result.ok) {
-      setError(result.error ?? '新增失敗');
-      return;
-    }
-    setWord('');
-    setZh('');
-    setEmoji('');
-    setError(null);
+  function toggleSource(key: WordSourceKey) {
+    const next = wordSources.includes(key) ? wordSources.filter((k) => k !== key) : [...wordSources, key];
+    setMazeWordSources(next);
   }
 
   return (
@@ -77,10 +52,6 @@ export default function WordVaultSettingsView() {
         Back
       </Link>
       <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 遊戲設定</h1>
-      <p className="mt-1 text-sm text-zinc-300">
-        目前題庫共 {totalActiveCount} 個單字（內建 {enabledBuiltinCount} / {MAZE_WORDS.length} 個啟用，自訂{' '}
-        {customWords.length} 個）。
-      </p>
 
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
         <h2 className="text-sm font-bold text-zinc-900">🎓 已解鎖的單字（共 {bestCompletions.length} 個）</h2>
@@ -158,52 +129,43 @@ export default function WordVaultSettingsView() {
       </div>
 
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
-        <h2 className="text-sm font-bold text-zinc-900">📚 單字來源</h2>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-zinc-900">📚 題目來源</h2>
           <button
             type="button"
-            onClick={() => setWordSource('builtin')}
-            className={`rounded-lg px-4 py-2 text-sm font-bold ${
-              wordSource === 'builtin' ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-            }`}
+            onClick={() => setMazeWordSources(ALL_WORD_SOURCES)}
+            className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
           >
-            標準題庫
-          </button>
-          <button
-            type="button"
-            onClick={() => weekWords.length > 0 && setWordSource('week')}
-            disabled={weekWords.length === 0}
-            className={`rounded-lg px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${
-              wordSource === 'week' && weekWords.length > 0
-                ? 'bg-[var(--hero-gold)] text-zinc-900'
-                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-            }`}
-          >
-            本週學習單字（{weekWords.length} 個）
-          </button>
-          <button
-            type="button"
-            onClick={() => learnedWords.length > 0 && setWordSource('learned')}
-            disabled={learnedWords.length === 0}
-            className={`rounded-lg px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${
-              wordSource === 'learned' && learnedWords.length > 0
-                ? 'bg-[var(--hero-gold)] text-zinc-900'
-                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-            }`}
-          >
-            已學會單字（{learnedWords.length} 個）
+            全選
           </button>
         </div>
+        <p className="mt-1 text-xs text-zinc-500">
+          出題只會從下方勾選的來源抽字，有勾選多個來源時，抽題順序固定為「本週單字 → 加強單字 → 自訂單字 → 自然發音卡 →
+          重要單字卡」，同一輪內盡量不重複，抽完一輪才會重新循環。
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {WORD_SOURCE_DISPLAY_ORDER.map((key) => {
+            const checked = wordSources.includes(key);
+            return (
+              <label
+                key={key}
+                className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
+                  checked ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleSource(key)}
+                  className="h-4 w-4 cursor-pointer accent-zinc-900"
+                />
+                {WORD_SOURCE_LABELS[key]}
+              </label>
+            );
+          })}
+        </div>
         <p className="mt-2 text-xs text-zinc-500">
-          {wordSource === 'learned'
-            ? learnedWords.length === 0
-              ? '還沒有標記為「知道意思 🌟」的單字，請先在字卡區練習。'
-              : '使用字卡區已標記「知道意思 🌟」的單字，複習已掌握的詞彙。'
-            : wordSource === 'week'
-              ? weekWords.length === 0
-                ? '本週還沒有指定學習單字。'
-                : '只出本週正在學習的單字，幫助複習。'
-              : '使用標準題庫，由設定控制哪些單字啟用。'}
+          自訂單字可以到「自訂單字」頁面新增；可複選，取消到剩 0 個時會自動恢復全選。
         </p>
       </div>
 
@@ -232,119 +194,6 @@ export default function WordVaultSettingsView() {
         <p className="mt-2 text-xs text-zinc-500">
           穿透版：小精靈撞到外牆會從對面穿出，可以快速逃離幽靈！
         </p>
-      </div>
-
-      <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
-        <h2 className="text-sm font-bold text-zinc-900">新增單字（3～8 個英文字母）</h2>
-        <label className="mt-3 block text-sm font-medium text-zinc-700">
-          英文單字
-          <input
-            type="text"
-            value={word}
-            onChange={(e) => setWord(e.target.value)}
-            placeholder="例如：BREAD"
-            maxLength={8}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 uppercase"
-          />
-        </label>
-        <label className="mt-3 block text-sm font-medium text-zinc-700">
-          中文意思
-          <input
-            type="text"
-            value={zh}
-            onChange={(e) => setZh(e.target.value)}
-            placeholder="例如：麵包"
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900"
-          />
-        </label>
-        <label className="mt-3 block text-sm font-medium text-zinc-700">
-          Emoji 圖示
-          <input
-            type="text"
-            value={emoji}
-            onChange={(e) => setEmoji(e.target.value)}
-            placeholder="例如：🍞"
-            maxLength={4}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900"
-          />
-        </label>
-        {error && <p className="mt-2 text-sm font-medium text-red-500">{error}</p>}
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="mt-4 rounded-lg bg-[var(--hero-red)] px-4 py-2 text-sm font-bold text-white hover:bg-[var(--hero-red-dark)]"
-        >
-          新增單字
-        </button>
-      </div>
-
-      <div className="mt-8">
-        <h2 className="text-lg font-bold text-[var(--hero-gold)]">已新增的單字</h2>
-        {customWords.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-400">還沒有新增任何單字。</p>
-        ) : (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {customWords.map((w) => (
-              <div
-                key={w.word}
-                className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-sm text-zinc-200"
-              >
-                <span>
-                  {w.emoji} {w.word}
-                  <span className="ml-2 text-zinc-400">（{w.zh}）</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeCustomMazeWord(w.word)}
-                  aria-label="刪除這個單字"
-                  className="ml-2 rounded-md px-2 py-1 text-zinc-400 hover:bg-white/10 hover:text-red-400"
-                >
-                  🗑️
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[var(--hero-gold)]">
-            內建題庫（{enabledBuiltinCount} / {MAZE_WORDS.length} 已啟用）
-          </h2>
-          {disabledIds.length > 0 && (
-            <button
-              type="button"
-              onClick={enableAllBuiltinMazeWords}
-              className="text-xs font-medium text-zinc-300 hover:underline"
-            >
-              全部啟用
-            </button>
-          )}
-        </div>
-        <p className="mt-1 text-xs text-zinc-400">取消勾選的單字不會出現在迷宮中，隨時可以再勾回來。</p>
-        <div className="mt-2 flex max-h-96 flex-col gap-1 overflow-y-auto rounded-lg bg-white/5 p-2">
-          {MAZE_WORDS.map((w) => {
-            const isEnabled = !disabledIds.includes(w.word);
-            return (
-              <label
-                key={w.word}
-                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-zinc-200 hover:bg-white/10"
-              >
-                <input
-                  type="checkbox"
-                  checked={isEnabled}
-                  onChange={() => toggleBuiltinMazeWord(w.word)}
-                  className="h-4 w-4 accent-[var(--hero-gold)]"
-                />
-                <span className={isEnabled ? '' : 'text-zinc-500 line-through'}>
-                  {w.emoji} {w.word}
-                  <span className="ml-2 text-zinc-400">（{w.zh}）</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
       </div>
     </main>
   );

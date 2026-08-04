@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import type { MazeWord } from '@/data/wordMazeWords';
-import { useAllMazeWords, useGhostCount, useGhostTickMs, useTunnelMode } from '@/lib/wordVaultSettings';
+import { useMazeWordTiers, useGhostCount, useGhostTickMs, useTunnelMode } from '@/lib/wordVaultSettings';
 import HeroMascot from '@/components/HeroMascot';
 import MazePhase from './MazePhase';
 import PuzzlePhase from './PuzzlePhase';
@@ -12,7 +12,7 @@ import AchievementSidebar from './AchievementSidebar';
 type Stage = 'maze' | 'puzzle';
 
 export default function WordVaultView() {
-  const allWords = useAllMazeWords();
+  const wordTiers = useMazeWordTiers();
   const ghostCount = useGhostCount();
   const ghostTickMs = useGhostTickMs();
   const tunnelMode = useTunnelMode();
@@ -20,31 +20,40 @@ export default function WordVaultView() {
   // Track which words have been shown so no word repeats until the whole pool
   // has been exhausted. When the pool changes (settings edit), reset the tracker.
   const usedWordsRef = useRef(new Set<string>());
-  const lastPoolRef = useRef(allWords);
+  const lastTiersRef = useRef(wordTiers);
+
+  // Draws from the narrowest non-empty tier first (thisWeek -> reinforcement
+  // -> custom -> phonics -> sightWords), same priority convention as
+  // angry-cow/hero-climb's word sources, while still avoiding repeats
+  // within the current rotation.
+  function pickFromTiers(tiers: MazeWord[][], excludeCurrent: string | undefined): MazeWord | null {
+    for (const tier of tiers) {
+      let available = tier.filter((w) => !usedWordsRef.current.has(w.word));
+      if (excludeCurrent) available = available.filter((w) => w.word !== excludeCurrent);
+      if (available.length > 0) return available[Math.floor(Math.random() * available.length)];
+    }
+    return null;
+  }
 
   function pickNext(currentWordStr?: string): MazeWord {
-    const pool = allWords;
-    if (pool !== lastPoolRef.current) {
-      lastPoolRef.current = pool;
+    const tiers = wordTiers;
+    if (tiers !== lastTiersRef.current) {
+      lastTiersRef.current = tiers;
       usedWordsRef.current = new Set();
     }
-    let available = pool.filter((w) => !usedWordsRef.current.has(w.word));
-    if (available.length === 0) {
+    let picked = pickFromTiers(tiers, currentWordStr);
+    if (!picked) {
       // Full rotation done — start fresh, just skip the word we just played
       usedWordsRef.current = new Set();
-      available = currentWordStr ? pool.filter((w) => w.word !== currentWordStr) : pool;
-      if (available.length === 0) available = pool;
-    } else if (currentWordStr && available.length > 1) {
-      const noRepeat = available.filter((w) => w.word !== currentWordStr);
-      if (noRepeat.length > 0) available = noRepeat;
+      picked = pickFromTiers(tiers, currentWordStr) ?? pickFromTiers(tiers, undefined);
     }
-    const picked = available[Math.floor(Math.random() * available.length)];
-    usedWordsRef.current.add(picked.word);
-    return picked;
+    const result = picked ?? tiers.flat()[0];
+    usedWordsRef.current.add(result.word);
+    return result;
   }
 
   const [word, setWord] = useState<MazeWord>(() => {
-    const initial = allWords[Math.floor(Math.random() * allWords.length)];
+    const initial = pickFromTiers(wordTiers, undefined) ?? wordTiers.flat()[0];
     usedWordsRef.current.add(initial.word);
     return initial;
   });

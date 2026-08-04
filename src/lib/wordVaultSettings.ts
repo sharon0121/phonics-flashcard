@@ -1,66 +1,44 @@
 import { useSyncExternalStore } from 'react';
-import { MAZE_WORDS, type MazeWord } from '@/data/wordMazeWords';
+import type { MazeWord } from '@/data/wordMazeWords';
 import { words as PHONICS_WORDS } from '@/data/words';
+import { sightWords as SIGHT_WORDS } from '@/data/sightWords';
 import { useCurriculum, getCurrentWeekKey, getActiveWordIds } from '@/lib/curriculum';
 import { useProgress } from '@/lib/progress';
+import { useCustomWords } from '@/lib/customWords';
+import {
+  WORD_SOURCE_LABELS,
+  WORD_SOURCE_DISPLAY_ORDER,
+  ALL_WORD_SOURCES,
+  type WordSourceKey,
+} from '@/lib/heroClimbSettings';
 
-const CUSTOM_KEY = 'custom_maze_words';
-const DISABLED_KEY = 'disabled_maze_word_ids';
+export { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, type WordSourceKey };
+
 const GHOST_COUNT_KEY = 'maze_ghost_count';
 const GHOST_SPEED_KEY = 'maze_ghost_speed';
-const WORD_SOURCE_KEY = 'maze_word_source';
+const WORD_SOURCES_KEY = 'maze_word_sources';
 const TUNNEL_KEY = 'maze_tunnel_mode';
 
 export type GhostSpeed = 'slow' | 'normal' | 'fast';
-export type WordSource = 'builtin' | 'week' | 'learned';
 
 const GHOST_SPEED_MS: Record<GhostSpeed, number> = { slow: 700, normal: 500, fast: 350 };
 
 const EMPTY_WORDS: MazeWord[] = [];
-const EMPTY_IDS: string[] = [];
 export const DEFAULT_GHOST_COUNT = 2;
 export const MIN_GHOST_COUNT = 2;
 export const MAX_GHOST_COUNT = 10;
 const DEFAULT_GHOST_SPEED: GhostSpeed = 'normal';
-const DEFAULT_WORD_SOURCE: WordSource = 'week';
+const DEFAULT_WORD_SOURCES: WordSourceKey[] = [...ALL_WORD_SOURCES];
 
 const listeners = new Set<() => void>();
-let cachedCustomRaw: string | null = null;
-let cachedCustom: MazeWord[] = EMPTY_WORDS;
-let cachedDisabledRaw: string | null = null;
-let cachedDisabled: string[] = EMPTY_IDS;
 let cachedGhostRaw: string | null = null;
 let cachedGhostCount = DEFAULT_GHOST_COUNT;
 let cachedSpeedRaw: string | null = null;
 let cachedGhostSpeed: GhostSpeed = DEFAULT_GHOST_SPEED;
-let cachedSourceRaw: string | null = null;
-let cachedWordSource: WordSource = DEFAULT_WORD_SOURCE;
+let cachedSourcesRaw: string | null = null;
+let cachedSources: WordSourceKey[] = DEFAULT_WORD_SOURCES;
 let cachedTunnelRaw: string | null = null;
 let cachedTunnelMode = false;
-
-function readCustom(): MazeWord[] {
-  const raw = localStorage.getItem(CUSTOM_KEY);
-  if (raw === cachedCustomRaw) return cachedCustom;
-  cachedCustomRaw = raw;
-  try {
-    cachedCustom = raw ? (JSON.parse(raw) as MazeWord[]) : EMPTY_WORDS;
-  } catch {
-    cachedCustom = EMPTY_WORDS;
-  }
-  return cachedCustom;
-}
-
-function readDisabled(): string[] {
-  const raw = localStorage.getItem(DISABLED_KEY);
-  if (raw === cachedDisabledRaw) return cachedDisabled;
-  cachedDisabledRaw = raw;
-  try {
-    cachedDisabled = raw ? (JSON.parse(raw) as string[]) : EMPTY_IDS;
-  } catch {
-    cachedDisabled = EMPTY_IDS;
-  }
-  return cachedDisabled;
-}
 
 function readGhostCount(): number {
   const raw = localStorage.getItem(GHOST_COUNT_KEY);
@@ -80,12 +58,17 @@ function readGhostSpeed(): GhostSpeed {
   return cachedGhostSpeed;
 }
 
-function readWordSource(): WordSource {
-  const raw = localStorage.getItem(WORD_SOURCE_KEY);
-  if (raw === cachedSourceRaw) return cachedWordSource;
-  cachedSourceRaw = raw;
-  cachedWordSource = raw === 'builtin' || raw === 'week' || raw === 'learned' ? raw : DEFAULT_WORD_SOURCE;
-  return cachedWordSource;
+function readWordSources(): WordSourceKey[] {
+  const raw = localStorage.getItem(WORD_SOURCES_KEY);
+  if (raw === cachedSourcesRaw) return cachedSources;
+  cachedSourcesRaw = raw;
+  if (raw == null) { cachedSources = DEFAULT_WORD_SOURCES; return cachedSources; }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const valid = Array.isArray(parsed) ? parsed.filter((k): k is WordSourceKey => ALL_WORD_SOURCES.includes(k as WordSourceKey)) : [];
+    cachedSources = valid.length > 0 ? valid : DEFAULT_WORD_SOURCES;
+  } catch { cachedSources = DEFAULT_WORD_SOURCES; }
+  return cachedSources;
 }
 
 function readTunnelMode(): boolean {
@@ -94,36 +77,6 @@ function readTunnelMode(): boolean {
   cachedTunnelRaw = raw;
   cachedTunnelMode = raw === 'true';
   return cachedTunnelMode;
-}
-
-let cachedLearnedRaw: string | null = null;
-let cachedLearnedWords: MazeWord[] = EMPTY_WORDS;
-
-// Must return the SAME array reference when the underlying storage hasn't
-// changed — useSyncExternalStore compares snapshots by reference, and a
-// fresh array on every call (as this used to build unconditionally) makes
-// React treat it as a perpetually-changing store, forcing endless re-renders.
-// That's cheap enough to go unnoticed on a fast machine but pins a phone's
-// CPU and can crash the tab.
-function readLearnedMazeWords(): MazeWord[] {
-  const raw = localStorage.getItem('phonics_progress');
-  if (raw === cachedLearnedRaw) return cachedLearnedWords;
-  cachedLearnedRaw = raw;
-  if (!raw) {
-    cachedLearnedWords = EMPTY_WORDS;
-    return cachedLearnedWords;
-  }
-  try {
-    const progress = JSON.parse(raw) as Record<string, { canUnderstand?: boolean }>;
-    const result = PHONICS_WORDS
-      .filter((w) => w.word.length >= 3 && w.word.length <= 8 && progress[w.id]?.canUnderstand === true)
-      .map((w) => ({ word: w.word.toUpperCase(), zh: w.zh, emoji: w.emoji }));
-    cachedLearnedWords = result.length > 0 ? result : EMPTY_WORDS;
-    return cachedLearnedWords;
-  } catch {
-    cachedLearnedWords = EMPTY_WORDS;
-    return cachedLearnedWords;
-  }
 }
 
 function subscribe(callback: () => void): () => void {
@@ -139,14 +92,6 @@ function notify(): void {
   listeners.forEach((listener) => listener());
 }
 
-export function useCustomMazeWords(): MazeWord[] {
-  return useSyncExternalStore(subscribe, readCustom, () => EMPTY_WORDS);
-}
-
-export function useDisabledMazeWordIds(): string[] {
-  return useSyncExternalStore(subscribe, readDisabled, () => EMPTY_IDS);
-}
-
 export function useGhostCount(): number {
   return useSyncExternalStore(subscribe, readGhostCount, () => DEFAULT_GHOST_COUNT);
 }
@@ -159,43 +104,12 @@ export function useGhostTickMs(): number {
   return GHOST_SPEED_MS[useGhostSpeed()];
 }
 
-export function useWordSource(): WordSource {
-  return useSyncExternalStore(subscribe, readWordSource, () => DEFAULT_WORD_SOURCE);
+export function useMazeWordSources(): WordSourceKey[] {
+  return useSyncExternalStore(subscribe, readWordSources, () => DEFAULT_WORD_SOURCES);
 }
 
 export function useTunnelMode(): boolean {
   return useSyncExternalStore(subscribe, readTunnelMode, () => false);
-}
-
-export function useLearnedMazeWords(): MazeWord[] {
-  return useSyncExternalStore(subscribe, readLearnedMazeWords, () => EMPTY_WORDS);
-}
-
-// This week's curriculum words (from the phonics word bank), reshaped for
-// the maze/puzzle UI — no length restriction, whatever's assigned this week.
-export function useThisWeekMazeWords(): MazeWord[] {
-  const curriculum = useCurriculum();
-  const progress = useProgress();
-  const weekKey = getCurrentWeekKey();
-  const ids = new Set(getActiveWordIds(curriculum, progress, weekKey));
-  if (ids.size === 0) return EMPTY_WORDS;
-  return PHONICS_WORDS.filter((w) => ids.has(w.id)).map((w) => ({
-    word: w.word.toUpperCase(),
-    zh: w.zh,
-    emoji: w.emoji,
-  }));
-}
-
-function saveCustom(words: MazeWord[]): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(CUSTOM_KEY, JSON.stringify(words));
-  notify();
-}
-
-function saveDisabled(ids: string[]): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(DISABLED_KEY, JSON.stringify(ids));
-  notify();
 }
 
 export function setGhostCount(count: number): void {
@@ -211,9 +125,10 @@ export function setGhostSpeed(speed: GhostSpeed): void {
   notify();
 }
 
-export function setWordSource(source: WordSource): void {
+export function setMazeWordSources(sources: WordSourceKey[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(WORD_SOURCE_KEY, source);
+  const safe = sources.length > 0 ? sources : DEFAULT_WORD_SOURCES;
+  localStorage.setItem(WORD_SOURCES_KEY, JSON.stringify(safe));
   notify();
 }
 
@@ -223,58 +138,39 @@ export function setTunnelMode(on: boolean): void {
   notify();
 }
 
-interface AddWordResult {
-  ok: boolean;
-  error?: string;
+function toMazeWords(words: { word: string; zh: string; emoji: string }[]): MazeWord[] {
+  return words
+    .filter((w) => w.word.length >= 3 && w.word.length <= 8)
+    .map((w) => ({ word: w.word.toUpperCase(), zh: w.zh, emoji: w.emoji }));
 }
 
-// Both maze phases (letter count, blank count) size themselves off the
-// word's actual length, so any reasonable length works — just keep it sane
-// for the UI.
-export function addCustomMazeWord(word: string, zh: string, emoji: string): AddWordResult {
-  const upper = word.trim().toUpperCase();
-  if (!/^[A-Z]{3,8}$/.test(upper)) {
-    return { ok: false, error: '單字必須是 3～8 個英文字母' };
-  }
-  const fresh = readCustom();
-  if (fresh.some((w) => w.word === upper) || MAZE_WORDS.some((w) => w.word === upper)) {
-    return { ok: false, error: '這個單字已經存在了' };
-  }
-  saveCustom([...fresh, { word: upper, zh: zh.trim(), emoji: emoji.trim() || '❓' }]);
-  return { ok: true };
+// Word pools grouped by source, narrowest scope first — same priority
+// convention as angry-cow/hero-climb's word sources, so picking logic can
+// draw from the first non-empty tier before falling back to the big banks.
+export function useMazeWordTiers(): MazeWord[][] {
+  const curriculum = useCurriculum();
+  const progress = useProgress();
+  const customWords = useCustomWords();
+  const sources = useMazeWordSources();
+
+  const weekKey = getCurrentWeekKey();
+  const weekIds = new Set(getActiveWordIds(curriculum, progress, weekKey));
+  const weekWords = weekIds.size > 0 ? PHONICS_WORDS.filter((w) => weekIds.has(w.id)) : [];
+  const reinforcementWords = [...PHONICS_WORDS, ...SIGHT_WORDS].filter((w) => progress[w.id]?.needsReinforcement === true);
+
+  const tiers: Array<{ key: WordSourceKey; words: MazeWord[] }> = [
+    { key: 'thisWeek', words: toMazeWords(weekWords) },
+    { key: 'reinforcement', words: toMazeWords(reinforcementWords) },
+    { key: 'custom', words: toMazeWords(customWords) },
+    { key: 'phonics', words: toMazeWords(PHONICS_WORDS) },
+    { key: 'sightWords', words: toMazeWords(SIGHT_WORDS) },
+  ];
+  const active = tiers.filter((t) => sources.includes(t.key) && t.words.length > 0).map((t) => t.words);
+  return active.length > 0 ? active : [toMazeWords(PHONICS_WORDS)];
 }
 
-export function removeCustomMazeWord(word: string): void {
-  const fresh = readCustom();
-  saveCustom(fresh.filter((w) => w.word !== word));
-}
-
-export function toggleBuiltinMazeWord(word: string): void {
-  const current = readDisabled();
-  const next = current.includes(word) ? current.filter((w) => w !== word) : [...current, word];
-  saveDisabled(next);
-}
-
-export function enableAllBuiltinMazeWords(): void {
-  saveDisabled(EMPTY_IDS);
-}
-
-// All words available to the game. In "week" mode, uses this week's
-// curriculum words (falling back to the standard pool if none are
-// available yet); otherwise built-in words the parent hasn't turned off,
-// plus anything added via settings. Never returns an empty pool.
+// Flattened view for callers that just need "all currently eligible words"
+// without caring about source priority (e.g. settings page word counts).
 export function useAllMazeWords(): MazeWord[] {
-  const source = useWordSource();
-  const custom = useCustomMazeWords();
-  const disabled = useDisabledMazeWordIds();
-  const weekWords = useThisWeekMazeWords();
-  const learnedWords = useLearnedMazeWords();
-
-  if (source === 'week' && weekWords.length > 0) return weekWords;
-  if (source === 'learned' && learnedWords.length > 0) return learnedWords;
-
-  const activeBuiltin =
-    disabled.length === 0 ? MAZE_WORDS : MAZE_WORDS.filter((w) => !disabled.includes(w.word));
-  const combined = [...activeBuiltin, ...custom];
-  return combined.length > 0 ? combined : MAZE_WORDS;
+  return useMazeWordTiers().flat();
 }
