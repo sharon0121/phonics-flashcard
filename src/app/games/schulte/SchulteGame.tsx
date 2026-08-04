@@ -5,14 +5,11 @@ import {
   itemsForCategory,
   CATEGORY_LABELS,
   CATEGORY_EMOJI,
+  NUMBER_PATTERN_LABELS,
   type SchulteCategory,
+  type NumberPattern,
 } from '@/data/schulteContent';
-import {
-  useSchulteGridDim,
-  useSchulteMode,
-  useSchulteTimeLimit,
-  useSchulteNumberCount,
-} from '@/lib/schulteSettings';
+import { SCHULTE_GRID_DIM, useSchulteMode, useSchulteTimeLimit } from '@/lib/schulteSettings';
 import {
   useSchulteLeaderboard,
   useLastSchultePlayerName,
@@ -44,18 +41,21 @@ function formatTime(ms: number): string {
 
 interface Props {
   category: SchulteCategory;
+  numberPattern?: NumberPattern;
   onBack: () => void;
 }
 
-export default function SchulteGame({ category, onBack }: Props) {
-  const gridDim = useSchulteGridDim();
+export default function SchulteGame({ category, numberPattern, onBack }: Props) {
   const mode = useSchulteMode();
   const timeLimitSec = useSchulteTimeLimit();
-  const numberCount = useSchulteNumberCount();
-  const leaderboard = useSchulteLeaderboard(category, gridDim);
+  const gridDim = SCHULTE_GRID_DIM;
+  // Numbers has 4 non-comparable sub-challenges (順序/奇數/偶數/5的倍數) —
+  // each gets its own leaderboard; the other categories are single boards.
+  const variant = category === 'numbers' ? `numbers-${numberPattern}` : category;
+  const leaderboard = useSchulteLeaderboard(category, variant);
   const lastPlayerName = useLastSchultePlayerName();
 
-  const sequence = itemsForCategory(category, numberCount);
+  const sequence = itemsForCategory(category, numberPattern ?? 'sequential');
   const cellsPerBatch = gridDim * gridDim;
 
   const [stage, setStage] = useState<Stage>('idle');
@@ -85,7 +85,7 @@ export default function SchulteGame({ category, onBack }: Props) {
   useEffect(() => {
     buildBatch(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, gridDim, numberCount]);
+  }, [category, numberPattern]);
 
   // Timer tick — 100ms for a reasonably smooth stopwatch/countdown display.
   useEffect(() => {
@@ -149,11 +149,11 @@ export default function SchulteGame({ category, onBack }: Props) {
 
   function handleSaveRecord() {
     setLastSchultePlayerName(nameInput);
-    addToSchulteLeaderboard(nameInput, finalMs, category, gridDim, Date.now());
+    addToSchulteLeaderboard(nameInput, finalMs, category, variant, Date.now());
     setSaved(true);
   }
 
-  const qualifies = stage === 'success' && qualifiesForSchulteLeaderboard(finalMs, category, gridDim);
+  const qualifies = stage === 'success' && qualifiesForSchulteLeaderboard(finalMs, category, variant);
   const cols = gridDim;
   const nextLabel = sequence[nextIndex];
 
@@ -172,6 +172,7 @@ export default function SchulteGame({ category, onBack }: Props) {
         </button>
         <span className="text-sm font-bold text-[var(--hero-gold)]">
           {CATEGORY_EMOJI[category]} {CATEGORY_LABELS[category]}
+          {numberPattern && `・${NUMBER_PATTERN_LABELS[numberPattern]}`}
         </span>
       </div>
 

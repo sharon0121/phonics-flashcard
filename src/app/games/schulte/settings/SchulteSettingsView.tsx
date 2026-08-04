@@ -2,29 +2,19 @@
 
 import Link from 'next/link';
 import {
-  useSchulteGridDim,
   useSchulteMode,
   useSchulteTimeLimit,
-  useSchulteNumberCount,
-  setSchulteGridDim,
   setSchulteMode,
   setSchulteTimeLimit,
-  setSchulteNumberCount,
-  GRID_DIM_OPTIONS,
   MODE_OPTIONS,
   TIME_LIMIT_OPTIONS,
-  NUMBER_COUNT_OPTIONS,
-  type SchulteGridDim,
   type SchulteMode,
   type SchulteTimeLimit,
-  type SchulteNumberCount,
 } from '@/lib/schulteSettings';
 
 export default function SchulteSettingsView() {
-  const gridDim = useSchulteGridDim();
   const mode = useSchulteMode();
   const timeLimit = useSchulteTimeLimit();
-  const numberCount = useSchulteNumberCount();
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
@@ -38,29 +28,9 @@ export default function SchulteSettingsView() {
         Back
       </Link>
       <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 遊戲設定</h1>
+      <p className="mt-1 text-xs text-zinc-400">方格固定為 5 × 5，內容較多時會自動分批進行。</p>
 
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
-        <h2 className="text-sm font-bold text-zinc-900">🔳 方格大小</h2>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {GRID_DIM_OPTIONS.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setSchulteGridDim(n as SchulteGridDim)}
-              className={`rounded-lg px-4 py-2 text-sm font-bold ${
-                gridDim === n ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-              }`}
-            >
-              {n} × {n}
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          內容項目較多時（例如注音符號、英文字母）會自動分批進行，按完一批接著下一批。
-        </p>
-      </div>
-
-      <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
         <h2 className="text-sm font-bold text-zinc-900">🎮 挑戰模式</h2>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
           {MODE_OPTIONS.map((opt) => (
@@ -97,24 +67,6 @@ export default function SchulteSettingsView() {
             </div>
           </>
         )}
-      </div>
-
-      <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
-        <h2 className="text-sm font-bold text-zinc-900">🔢 數字範圍（數字項目用）</h2>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {NUMBER_COUNT_OPTIONS.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setSchulteNumberCount(n as SchulteNumberCount)}
-              className={`rounded-lg px-4 py-2 text-sm font-bold ${
-                numberCount === n ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-              }`}
-            >
-              1～{n}
-            </button>
-          ))}
-        </div>
       </div>
     </main>
   );

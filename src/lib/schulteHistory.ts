@@ -12,8 +12,11 @@ export interface SchulteRecord {
   date: string;
 }
 
-function boardKey(category: SchulteCategory, gridDim: number): string {
-  return `schulte_board_${category}_${gridDim}x${gridDim}`;
+// `variant` distinguishes sub-challenges within a category that aren't
+// comparable to each other — currently just the numbers category's pattern
+// (順序/奇數/偶數/5的倍數), since those are different difficulty content.
+function boardKey(category: SchulteCategory, variant: string): string {
+  return `schulte_board_${category}_${variant}`;
 }
 
 const listeners = new Set<() => void>();
@@ -56,20 +59,20 @@ function notify(): void {
 
 const EMPTY: SchulteRecord[] = [];
 
-export function useSchulteLeaderboard(category: SchulteCategory, gridDim: number): SchulteRecord[] {
-  const key = boardKey(category, gridDim);
+export function useSchulteLeaderboard(category: SchulteCategory, variant: string): SchulteRecord[] {
+  const key = boardKey(category, variant);
   return useSyncExternalStore(subscribe, () => readBoard(key), () => EMPTY);
 }
 
-export function getSchulteLeaderboard(category: SchulteCategory, gridDim: number): SchulteRecord[] {
+export function getSchulteLeaderboard(category: SchulteCategory, variant: string): SchulteRecord[] {
   if (typeof window === 'undefined') return EMPTY;
-  return readBoard(boardKey(category, gridDim));
+  return readBoard(boardKey(category, variant));
 }
 
 // Lower time is better — a run qualifies if the board has room, or beats
 // the current slowest entry on it.
-export function qualifiesForSchulteLeaderboard(timeMs: number, category: SchulteCategory, gridDim: number): boolean {
-  const board = getSchulteLeaderboard(category, gridDim);
+export function qualifiesForSchulteLeaderboard(timeMs: number, category: SchulteCategory, variant: string): boolean {
+  const board = getSchulteLeaderboard(category, variant);
   if (board.length < MAX_ENTRIES) return true;
   return timeMs < board[board.length - 1].timeMs;
 }
@@ -78,10 +81,10 @@ export function addToSchulteLeaderboard(
   name: string,
   timeMs: number,
   category: SchulteCategory,
-  gridDim: number,
+  variant: string,
   now: number,
 ): SchulteRecord[] {
-  const key = boardKey(category, gridDim);
+  const key = boardKey(category, variant);
   const board = readBoard(key);
   const entry: SchulteRecord = {
     id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
