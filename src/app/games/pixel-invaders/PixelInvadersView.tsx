@@ -3,6 +3,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import BackButton from '@/components/BackButton';
 import { words as PHONICS_WORDS } from '@/data/words';
+import type { Word } from '@/lib/types';
+import { useCustomWords } from '@/lib/customWords';
+import {
+  useThisWeekClimbWords,
+  useReinforcementClimbWords,
+  usePhonicsClimbWords,
+  useSightWordsClimb,
+  ALL_WORD_SOURCES,
+  type WordSourceKey,
+} from '@/lib/heroClimbSettings';
 import {
   usePixelInvadersLeaderboard,
   useLastPixelInvadersName,
@@ -113,14 +123,19 @@ function genMathQuestion(maxRange: number, count: number): MathQ {
   return { kind: 'math', nums, ops, answer, choices: [answer, ...wrong].sort(() => Math.random()-0.5) };
 }
 
-function genEnglishQuestion(phases: number[]): EnglishQ {
-  const pool = PHONICS_WORDS.filter(w => phases.includes(w.phase) && w.emoji);
-  const src  = pool.length > 0 ? pool : PHONICS_WORDS.filter(w => w.emoji);
+// Correct answer drawn from the narrowest non-empty selected source tier;
+// distractors drawn from the combined pool of all selected tiers — same
+// priority convention as angry-cow's makeEnglishRound.
+function genEnglishQuestion(wordTiers: Word[][]): EnglishQ {
+  const combined = wordTiers.flat();
+  const nonEmpty = wordTiers.find((p) => p.length > 0);
+  const src = nonEmpty && nonEmpty.length > 0 ? nonEmpty : (combined.length > 0 ? combined : PHONICS_WORDS.filter(w => w.emoji));
   const correct = src[rnd(0, src.length - 1)];
+  const distractorSrc = combined.length > 0 ? combined : PHONICS_WORDS.filter(w => w.emoji);
   const wrong = new Set<string>();
   let tries = 0;
   while (wrong.size < 3 && tries++ < 120) {
-    const w = src[rnd(0, src.length - 1)];
+    const w = distractorSrc[rnd(0, distractorSrc.length - 1)];
     if (w.word !== correct.word) wrong.add(w.word);
   }
   // Fallback: draw from the full PHONICS_WORDS list
@@ -134,10 +149,10 @@ function genEnglishQuestion(phases: number[]): EnglishQ {
 
 function pickQuestion(
   ranges: number[], counts: number[], comboStreak: number,
-  mode: 'math'|'english'|'mixed', englishPhases: number[],
+  mode: 'math'|'english'|'mixed', wordTiers: Word[][],
 ): Question {
   const wantEnglish = mode === 'english' || (mode === 'mixed' && Math.random() < 0.5);
-  if (wantEnglish) return genEnglishQuestion(englishPhases);
+  if (wantEnglish) return genEnglishQuestion(wordTiers);
   const sr = [...ranges].sort((a,b)=>a-b);
   const sc = [...counts].sort((a,b)=>a-b);
   const rIdx = Math.min(Math.floor(comboStreak/10), Math.max(0, sr.length-1));
@@ -602,7 +617,7 @@ export default function PixelInvadersView() {
     ranges: [20] as number[], operandCounts: [2] as number[],
     combatSecs: 10, quizSecs: 8, shootSound: true,
     quizMode: 'math' as 'math'|'english'|'mixed',
-    englishPhases: [1, 2] as number[],
+    wordSources: [...ALL_WORD_SOURCES] as WordSourceKey[],
   });
   const [shootSoundOn, setShootSoundOn] = useState(true);
 
@@ -616,11 +631,37 @@ export default function PixelInvadersView() {
         // Validate quizMode
         const validModes = ['math','english','mixed'];
         if (!validModes.includes(parsed.quizMode)) settingsRef.current.quizMode = 'math';
-        // Validate englishPhases
-        if (!Array.isArray(parsed.englishPhases) || parsed.englishPhases.length === 0) settingsRef.current.englishPhases = [1,2];
+        // Validate wordSources
+        const validSources = Array.isArray(parsed.wordSources)
+          ? parsed.wordSources.filter((k: string) => ALL_WORD_SOURCES.includes(k as WordSourceKey))
+          : [];
+        settingsRef.current.wordSources = validSources.length > 0 ? validSources : [...ALL_WORD_SOURCES];
       }
     } catch { /* ignore */ }
   }, []);
+
+  // Reactive word-source pools (curriculum/progress/custom words can change
+  // between visits) — kept in a ref so the imperative game loop always
+  // reads the latest without re-subscribing every frame. Narrowest scope
+  // first, same priority convention as angry-cow/hero-climb/word-vault.
+  const weekWords = useThisWeekClimbWords();
+  const reinforcementWords = useReinforcementClimbWords();
+  const customWords = useCustomWords();
+  const phonicsWords = usePhonicsClimbWords();
+  const sightWordsPool = useSightWordsClimb();
+  const wordTiersRef = useRef<Word[][]>([]);
+  useEffect(() => {
+    const tiers: Array<{ key: WordSourceKey; words: Word[] }> = [
+      { key: 'thisWeek', words: weekWords },
+      { key: 'reinforcement', words: reinforcementWords },
+      { key: 'custom', words: customWords },
+      { key: 'phonics', words: phonicsWords },
+      { key: 'sightWords', words: sightWordsPool },
+    ];
+    wordTiersRef.current = tiers
+      .filter((t) => settingsRef.current.wordSources.includes(t.key))
+      .map((t) => t.words.filter((w) => w.emoji));
+  }, [weekWords, reinforcementWords, customWords, phonicsWords, sightWordsPool]);
 
   const toggleShootSound = useCallback(() => {
     const next = !settingsRef.current.shootSound;
@@ -743,7 +784,7 @@ export default function PixelInvadersView() {
       g.wrongInPhase++; g.comboStreak=0; g.bulletLevel=1; setBulletLevel(1);
       setFlashBad(true); setTimeout(() => setFlashBad(false), 420);
       setWrongCount(g.wrongInPhase);
-      setTimeout(() => setQuestion(pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, 0, settingsRef.current.quizMode, settingsRef.current.englishPhases)), 420);
+      setTimeout(() => setQuestion(pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, 0, settingsRef.current.quizMode, wordTiersRef.current)), 420);
     }
   }, []);
 
@@ -925,7 +966,7 @@ export default function PixelInvadersView() {
 
         g.timerFrames--;
         if (g.timerFrames<=0) {
-          const q = pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, g.comboStreak, settingsRef.current.quizMode, settingsRef.current.englishPhases);
+          const q = pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, g.comboStreak, settingsRef.current.quizMode, wordTiersRef.current);
           g.phase='quiz'; setPhase('quiz');
           g.quizTimer = settingsRef.current.quizSecs * 60;
           setQuizSecsLeft(settingsRef.current.quizSecs);
@@ -942,7 +983,7 @@ export default function PixelInvadersView() {
           g.totalWrong++; setTotalWrong(g.totalWrong);
           g.wrongInPhase++; g.comboStreak=0; g.bulletLevel=1; setBulletLevel(1);
           setWrongCount(g.wrongInPhase); setFlashBad(true);
-          const newQ = pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, 0, settingsRef.current.quizMode, settingsRef.current.englishPhases);
+          const newQ = pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, 0, settingsRef.current.quizMode, wordTiersRef.current);
           setTimeout(() => {
             setFlashBad(false);
             setQuestion(newQ);

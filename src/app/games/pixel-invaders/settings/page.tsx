@@ -2,6 +2,7 @@
 
 import BackButton from '@/components/BackButton';
 import { useEffect, useState } from 'react';
+import { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, type WordSourceKey } from '@/lib/heroClimbSettings';
 
 const SETTINGS_KEY = 'pixelInvaders_settings';
 
@@ -12,12 +13,12 @@ interface Settings {
   quizSecs: number;
   shootSound: boolean;
   quizMode: 'math' | 'english' | 'mixed';
-  englishPhases: number[];
+  wordSources: WordSourceKey[];
 }
 
 const DEFAULTS: Settings = {
   ranges: [20], operandCounts: [2], combatSecs: 10, quizSecs: 8, shootSound: true,
-  quizMode: 'math', englishPhases: [1, 2],
+  quizMode: 'math', wordSources: [...ALL_WORD_SOURCES],
 };
 
 function loadSettings(): Settings {
@@ -58,10 +59,12 @@ export default function PixelInvadersSettingsPage() {
     update('operandCounts', next);
   };
 
-  const togglePhase = (val: number) => {
-    const next = toggleItem(settings.englishPhases, val);
+  const toggleSource = (key: WordSourceKey) => {
+    const next = settings.wordSources.includes(key)
+      ? settings.wordSources.filter((k) => k !== key)
+      : [...settings.wordSources, key];
     if (next.length === 0) return;
-    update('englishPhases', next);
+    update('wordSources', next);
   };
 
   const checkCls = (active: boolean) =>
@@ -173,23 +176,17 @@ export default function PixelInvadersSettingsPage() {
             )}
           </section>
 
-          {/* English phases — only shown when quizMode involves English */}
+          {/* Word sources — only shown when quizMode involves English */}
           {(settings.quizMode === 'english' || settings.quizMode === 'mixed') && (
             <section className="bg-gray-900/80 rounded-2xl p-5 border border-gray-700">
               <h2 className="text-sm font-bold text-gray-400 font-mono mb-1 uppercase tracking-wide">英文題目來源（可複選）</h2>
-              <p className="text-xs text-gray-500 font-mono mb-3">勾選要出哪幾個 Phase 的英文字彙</p>
+              <p className="text-xs text-gray-500 font-mono mb-3">
+                有勾選多個來源時，答對優先出「本週單字 → 加強單字 → 自訂單字 → 自然發音卡 → 重要單字卡」較窄範圍的字
+              </p>
               <div className="flex flex-wrap gap-2">
-                {([
-                  { val: 1, label: 'Phase 1', desc: '短母音' },
-                  { val: 2, label: 'Phase 2', desc: '複合輔音' },
-                  { val: 3, label: 'Phase 3', desc: '輔音連音' },
-                  { val: 4, label: 'Phase 4', desc: 'Magic E' },
-                  { val: 5, label: 'Phase 5', desc: '母音組合' },
-                  { val: 6, label: 'Phase 6', desc: 'R 控母音' },
-                ]).map(p => (
-                  <button key={p.val} onClick={() => togglePhase(p.val)} className={checkCls(settings.englishPhases.includes(p.val))}>
-                    {p.label}
-                    <div className="text-[9px] font-normal opacity-70">{p.desc}</div>
+                {WORD_SOURCE_DISPLAY_ORDER.map((key) => (
+                  <button key={key} onClick={() => toggleSource(key)} className={checkCls(settings.wordSources.includes(key))}>
+                    {WORD_SOURCE_LABELS[key]}
                   </button>
                 ))}
               </div>
