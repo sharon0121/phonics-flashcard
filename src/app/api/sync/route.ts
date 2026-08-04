@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
 import type { ProgressMap } from '@/lib/types';
 import type { CurriculumMap } from '@/lib/curriculum';
+import type { HanziWord } from '@/lib/hanziWords';
 
 // Single shared record — this app has one family/one learner, not
 // multiple accounts, so there's no per-user keying or auth to manage.
@@ -10,6 +11,7 @@ const KEY = 'phonics_sync_state';
 interface SyncState {
   progress: ProgressMap;
   curriculum: CurriculumMap;
+  hanziWords?: HanziWord[]; // optional — absent on records written before this field existed
   updatedAt: number;
 }
 

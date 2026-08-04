@@ -1,12 +1,14 @@
 import { loadProgress, saveProgress, subscribe as onProgressChange } from './progress';
 import { loadCurriculum, saveCurriculum, subscribe as onCurriculumChange } from './curriculum';
+import { loadHanziWords, saveHanziWords, subscribe as onHanziWordsChange, type HanziWord } from './hanziWords';
 import type { ProgressMap } from './types';
 import type { CurriculumMap } from './curriculum';
 
-// Cross-device sync for the two pieces of state that make up "英文字卡學習
-// 進度": flashcard progress and the weekly curriculum plan. Last-write-wins
-// by timestamp — simple on purpose, since this app has one learner, not
-// multiple accounts negotiating conflicts.
+// Cross-device sync for the pieces of state meant to follow the learner
+// across devices: flashcard progress, the weekly curriculum plan, and the
+// custom 國字 word list. Last-write-wins by timestamp — simple on purpose,
+// since this app has one learner, not multiple accounts negotiating
+// conflicts.
 
 const UPDATED_AT_KEY = 'sync_updated_at';
 const PUSH_DEBOUNCE_MS = 1500;
@@ -14,6 +16,7 @@ const PUSH_DEBOUNCE_MS = 1500;
 interface SyncState {
   progress: ProgressMap;
   curriculum: CurriculumMap;
+  hanziWords?: HanziWord[]; // optional — absent on records written before this field existed
   updatedAt: number;
 }
 
@@ -42,6 +45,7 @@ function applyServerState(state: SyncState): void {
   try {
     saveProgress(state.progress);
     saveCurriculum(state.curriculum);
+    saveHanziWords(state.hanziWords ?? []);
     setLocalUpdatedAt(state.updatedAt);
   } finally {
     applyingRemote = false;
@@ -52,7 +56,12 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function pushNow(): Promise<void> {
   const updatedAt = Date.now();
-  const body: SyncState = { progress: loadProgress(), curriculum: loadCurriculum(), updatedAt };
+  const body: SyncState = {
+    progress: loadProgress(),
+    curriculum: loadCurriculum(),
+    hanziWords: loadHanziWords(),
+    updatedAt,
+  };
   try {
     const res = await fetch('/api/sync', {
       method: 'POST',
@@ -89,6 +98,7 @@ export function startSync(): void {
 
   onProgressChange(schedulePush);
   onCurriculumChange(schedulePush);
+  onHanziWordsChange(schedulePush);
 
   (async () => {
     try {
@@ -97,7 +107,9 @@ export function startSync(): void {
       const server = (await res.json()) as unknown;
       const serverHasData =
         isSyncState(server) &&
-        (Object.keys(server.progress).length > 0 || Object.keys(server.curriculum).length > 0);
+        (Object.keys(server.progress).length > 0 ||
+          Object.keys(server.curriculum).length > 0 ||
+          (server.hanziWords?.length ?? 0) > 0);
 
       // A device that has never run sync before starts at updatedAt=0, which
       // would always lose to *any* existing server record on a plain
@@ -111,7 +123,9 @@ export function startSync(): void {
       // it with this device's own possibly-stale local copy (pull down).
       if (localStorage.getItem(UPDATED_AT_KEY) === null) {
         const localHasData =
-          Object.keys(loadProgress()).length > 0 || Object.keys(loadCurriculum()).length > 0;
+          Object.keys(loadProgress()).length > 0 ||
+          Object.keys(loadCurriculum()).length > 0 ||
+          loadHanziWords().length > 0;
         if (localHasData && !serverHasData) {
           await pushNow();
         } else if (isSyncState(server) && serverHasData) {
