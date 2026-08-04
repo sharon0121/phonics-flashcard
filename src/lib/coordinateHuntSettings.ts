@@ -1,9 +1,14 @@
 import { useSyncExternalStore } from 'react';
+import { ladderTierValue } from '@/lib/heroClimbSettings';
 
-const TERM_COUNT_KEY = 'coord_hunt_terms';
-const MAX_VALUE_KEY = 'coord_hunt_max_value';
+export { ladderTierValue };
+
+const TERM_COUNT_KEY = 'coord_hunt_terms_multi';
+const MAX_VALUE_KEY = 'coord_hunt_max_value_multi';
 const TIME_LIMIT_KEY = 'coord_hunt_time_limit';
 
+// Multi-select difficulty ladders — same mechanic as 時空戰術隊/憤怒牛: sort
+// selected values ascending, step up a tier every 10-streak of correct digs.
 export const TERM_COUNT_OPTIONS = [2, 3, 4] as const;
 export type CoordTermCount = (typeof TERM_COUNT_OPTIONS)[number];
 
@@ -23,35 +28,45 @@ export const TIME_LIMIT_OPTIONS = [
 ] as const;
 export type CoordTimeLimit = (typeof TIME_LIMIT_OPTIONS)[number]['value'];
 
-const DEFAULT_TERMS: CoordTermCount = 3;
-const DEFAULT_MAX_VALUE: CoordMaxValue = 9;
+const VALID_TERM_VALUES = TERM_COUNT_OPTIONS as readonly number[];
+const VALID_RANGE_VALUES = COORD_NUMBER_RANGE_OPTIONS.map((o) => o.value) as number[];
+
+const DEFAULT_TERMS: number[] = [3];
+const DEFAULT_MAX_VALUES: number[] = [9];
 const DEFAULT_TIME_LIMIT: CoordTimeLimit = 180;
 
 const listeners = new Set<() => void>();
 let cachedTermsRaw: string | null = null;
-let cachedTerms: CoordTermCount = DEFAULT_TERMS;
+let cachedTerms: number[] = DEFAULT_TERMS;
 let cachedMaxValueRaw: string | null = null;
-let cachedMaxValue: CoordMaxValue = DEFAULT_MAX_VALUE;
+let cachedMaxValues: number[] = DEFAULT_MAX_VALUES;
 let cachedTimeLimitRaw: string | null = null;
 let cachedTimeLimit: CoordTimeLimit = DEFAULT_TIME_LIMIT;
 
-function readTerms(): CoordTermCount {
+function readTerms(): number[] {
   const raw = localStorage.getItem(TERM_COUNT_KEY);
   if (raw === cachedTermsRaw) return cachedTerms;
   cachedTermsRaw = raw;
-  const n = raw ? Number(raw) : DEFAULT_TERMS;
-  cachedTerms = (TERM_COUNT_OPTIONS as readonly number[]).includes(n) ? (n as CoordTermCount) : DEFAULT_TERMS;
+  if (raw == null) { cachedTerms = DEFAULT_TERMS; return cachedTerms; }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const valid = Array.isArray(parsed) ? parsed.filter((v): v is number => VALID_TERM_VALUES.includes(v as number)) : [];
+    cachedTerms = valid.length > 0 ? valid : DEFAULT_TERMS;
+  } catch { cachedTerms = DEFAULT_TERMS; }
   return cachedTerms;
 }
 
-function readMaxValue(): CoordMaxValue {
+function readMaxValues(): number[] {
   const raw = localStorage.getItem(MAX_VALUE_KEY);
-  if (raw === cachedMaxValueRaw) return cachedMaxValue;
+  if (raw === cachedMaxValueRaw) return cachedMaxValues;
   cachedMaxValueRaw = raw;
-  const n = raw ? Number(raw) : DEFAULT_MAX_VALUE;
-  const valid = COORD_NUMBER_RANGE_OPTIONS.map((o) => o.value) as number[];
-  cachedMaxValue = valid.includes(n) ? (n as CoordMaxValue) : DEFAULT_MAX_VALUE;
-  return cachedMaxValue;
+  if (raw == null) { cachedMaxValues = DEFAULT_MAX_VALUES; return cachedMaxValues; }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const valid = Array.isArray(parsed) ? parsed.filter((v): v is number => VALID_RANGE_VALUES.includes(v as number)) : [];
+    cachedMaxValues = valid.length > 0 ? valid : DEFAULT_MAX_VALUES;
+  } catch { cachedMaxValues = DEFAULT_MAX_VALUES; }
+  return cachedMaxValues;
 }
 
 function readTimeLimit(): CoordTimeLimit {
@@ -77,27 +92,29 @@ function notify(): void {
   listeners.forEach((l) => l());
 }
 
-export function useCoordTermCount(): CoordTermCount {
+export function useCoordTermCounts(): number[] {
   return useSyncExternalStore(subscribe, readTerms, () => DEFAULT_TERMS);
 }
 
-export function useCoordMaxValue(): CoordMaxValue {
-  return useSyncExternalStore(subscribe, readMaxValue, () => DEFAULT_MAX_VALUE);
+export function useCoordMaxValues(): number[] {
+  return useSyncExternalStore(subscribe, readMaxValues, () => DEFAULT_MAX_VALUES);
 }
 
 export function useCoordTimeLimit(): CoordTimeLimit {
   return useSyncExternalStore(subscribe, readTimeLimit, () => DEFAULT_TIME_LIMIT);
 }
 
-export function setCoordTermCount(n: CoordTermCount): void {
+export function setCoordTermCounts(values: number[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(TERM_COUNT_KEY, String(n));
+  const safe = values.length > 0 ? values : DEFAULT_TERMS;
+  localStorage.setItem(TERM_COUNT_KEY, JSON.stringify(safe));
   notify();
 }
 
-export function setCoordMaxValue(v: CoordMaxValue): void {
+export function setCoordMaxValues(values: number[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(MAX_VALUE_KEY, String(v));
+  const safe = values.length > 0 ? values : DEFAULT_MAX_VALUES;
+  localStorage.setItem(MAX_VALUE_KEY, JSON.stringify(safe));
   notify();
 }
 

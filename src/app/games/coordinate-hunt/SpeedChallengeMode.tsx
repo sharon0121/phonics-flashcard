@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   GRID_COLS,
@@ -10,10 +10,10 @@ import {
   type GridPosition,
 } from '@/lib/coordinateHunt';
 import {
-  useCoordTermCount,
-  useCoordMaxValue,
+  useCoordTermCounts,
+  useCoordMaxValues,
   useCoordTimeLimit,
-  TERM_COUNT_OPTIONS,
+  ladderTierValue,
   TIME_LIMIT_OPTIONS,
 } from '@/lib/coordinateHuntSettings';
 import { generateProblemSet, type AbacusProblem } from '@/lib/abacus';
@@ -64,10 +64,9 @@ function formatProblem(terms: number[]): string {
   return terms.map((t, i) => (i === 0 ? String(t) : t < 0 ? ` − ${-t}` : ` + ${t}`)).join('') + ' = ?';
 }
 
-function difficultyLabel(termCount: number, timeLimit: number): string {
-  const terms = TERM_COUNT_OPTIONS.find((n) => n === termCount) ?? termCount;
+function difficultyLabel(startingTermCount: number, timeLimit: number): string {
   const time = TIME_LIMIT_OPTIONS.find((o) => o.value === timeLimit);
-  return `${terms} 個數字 × ${time?.label ?? `${timeLimit}s`}`;
+  return `${startingTermCount} 個數字起 × ${time?.label ?? `${timeLimit}s`}`;
 }
 
 interface Props {
@@ -75,9 +74,25 @@ interface Props {
 }
 
 export default function SpeedChallengeMode({ onBack }: Props) {
-  const termCount = useCoordTermCount();
-  const maxValue = useCoordMaxValue();
+  const termCountOptions = useCoordTermCounts();
+  const maxValueOptions = useCoordMaxValues();
   const timeLimit = useCoordTimeLimit();
+  const sortedTerms = [...termCountOptions].sort((a, b) => a - b);
+  const sortedMax = [...maxValueOptions].sort((a, b) => a - b);
+  // Leaderboards are keyed by a fixed difficulty; with a multi-select ladder
+  // there's no single termCount anymore, so the STARTING (easiest) tier is
+  // used as the representative key for that ladder configuration.
+  const termCount = sortedTerms[0];
+
+  // Consecutive-correct-dig streak drives the difficulty ladder (same
+  // mechanic as 時空戰術隊/憤怒牛), reset to the easiest tier on a wrong dig.
+  const streakRef = useRef(0);
+  function nextRoundParams() {
+    return {
+      termCount: ladderTierValue(sortedTerms, streakRef.current),
+      maxValue: ladderTierValue(sortedMax, streakRef.current),
+    };
+  }
 
   const [stage, setStage] = useState<Stage>('idle');
   const [round, setRound] = useState<MathRound | null>(null);
@@ -131,6 +146,7 @@ export default function SpeedChallengeMode({ onBack }: Props) {
   useEffect(() => {
     if (stage !== 'roundSuccess') return;
     const t = setTimeout(() => {
+      const { termCount, maxValue } = nextRoundParams();
       setRound(makeRound(termCount, maxValue));
       setPlayer(START_POSITION);
       setDugCells([]);
@@ -138,9 +154,12 @@ export default function SpeedChallengeMode({ onBack }: Props) {
       setStage('playing');
     }, 600);
     return () => clearTimeout(t);
-  }, [stage, termCount, maxValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, termCountOptions, maxValueOptions]);
 
   function startGame() {
+    streakRef.current = 0;
+    const { termCount, maxValue } = nextRoundParams();
     setRound(makeRound(termCount, maxValue));
     setPlayer(START_POSITION);
     setDugCells([]);
@@ -169,11 +188,13 @@ export default function SpeedChallengeMode({ onBack }: Props) {
     setDugCells((prev) => [...prev, player]);
     if (samePosition(player, round.answerPos)) {
       playDingSound();
+      streakRef.current += 1;
       setScore((s) => s + 1);
       setDigFeedback('correct');
       setStage('roundSuccess');
     } else {
       playErrorSound();
+      streakRef.current = 0;
       setDigFeedback('wrong');
       setTimeout(() => setDigFeedback(null), 600);
     }

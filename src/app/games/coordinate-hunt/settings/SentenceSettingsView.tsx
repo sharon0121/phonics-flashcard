@@ -12,11 +12,11 @@ import {
   enableAllBuiltinSentences,
 } from '@/lib/gameSentences';
 import {
-  useCoordTermCount,
-  useCoordMaxValue,
+  useCoordTermCounts,
+  useCoordMaxValues,
   useCoordTimeLimit,
-  setCoordTermCount,
-  setCoordMaxValue,
+  setCoordTermCounts,
+  setCoordMaxValues,
   setCoordTimeLimit,
   TERM_COUNT_OPTIONS,
   COORD_NUMBER_RANGE_OPTIONS,
@@ -24,9 +24,23 @@ import {
 } from '@/lib/coordinateHuntSettings';
 
 export default function SentenceSettingsView() {
-  const termCount = useCoordTermCount();
-  const maxValue = useCoordMaxValue();
+  const termCounts = useCoordTermCounts();
+  const maxValues = useCoordMaxValues();
   const timeLimit = useCoordTimeLimit();
+  const sortedTerms = [...termCounts].sort((a, b) => a - b);
+  const sortedMax = [...maxValues].sort((a, b) => a - b);
+
+  function toggleTermCount(n: number) {
+    const next = termCounts.includes(n) ? termCounts.filter((v) => v !== n) : [...termCounts, n];
+    if (next.length === 0) return;
+    setCoordTermCounts(next);
+  }
+
+  function toggleMaxValue(v: number) {
+    const next = maxValues.includes(v) ? maxValues.filter((x) => x !== v) : [...maxValues, v];
+    if (next.length === 0) return;
+    setCoordMaxValues(next);
+  }
 
   const customSentences = useCustomSentences();
   const disabledIds = useDisabledBuiltinIds();
@@ -65,15 +79,16 @@ export default function SentenceSettingsView() {
 
       {/* ── Math difficulty ── */}
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
-        <h2 className="text-sm font-bold text-zinc-900">🔢 行數（題目有幾個數字）</h2>
+        <h2 className="text-sm font-bold text-zinc-900">🔢 行數（題目有幾個數字，可複選）</h2>
+        <p className="mt-1 text-xs text-zinc-500">從最少開始，連續答對 10 題升一層。</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {TERM_COUNT_OPTIONS.map((n) => (
             <button
               key={n}
               type="button"
-              onClick={() => setCoordTermCount(n)}
+              onClick={() => toggleTermCount(n)}
               className={`rounded-lg px-4 py-2 text-sm font-bold ${
-                termCount === n
+                termCounts.includes(n)
                   ? 'bg-[var(--hero-gold)] text-zinc-900'
                   : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
               }`}
@@ -82,19 +97,25 @@ export default function SentenceSettingsView() {
             </button>
           ))}
         </div>
+        {sortedTerms.length > 1 && (
+          <p className="mt-2 text-[10px] text-zinc-400">
+            進度：{sortedTerms.map((n, i) => `第${i + 1}層：${n}個數字`).join(' → ')}
+          </p>
+        )}
         <p className="mt-2 text-xs text-zinc-500">
           例：2 個數字 → 3 + 5 = ?；3 個數字 → 3 + 5 − 2 = ?
         </p>
 
-        <h2 className="mt-4 text-sm font-bold text-zinc-900">📏 數字大小（題目中每個數字的範圍）</h2>
+        <h2 className="mt-4 text-sm font-bold text-zinc-900">📏 數字大小（題目中每個數字的範圍，可複選）</h2>
+        <p className="mt-1 text-xs text-zinc-500">從最小開始，連續答對 10 題升一層。</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {COORD_NUMBER_RANGE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               type="button"
-              onClick={() => setCoordMaxValue(opt.value)}
+              onClick={() => toggleMaxValue(opt.value)}
               className={`rounded-lg px-4 py-2 text-sm font-bold ${
-                maxValue === opt.value
+                maxValues.includes(opt.value)
                   ? 'bg-[var(--hero-gold)] text-zinc-900'
                   : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
               }`}
@@ -103,6 +124,11 @@ export default function SentenceSettingsView() {
             </button>
           ))}
         </div>
+        {sortedMax.length > 1 && (
+          <p className="mt-2 text-[10px] text-zinc-400">
+            進度：{sortedMax.map((v, i) => `第${i + 1}層：${v}以內`).join(' → ')}
+          </p>
+        )}
         <p className="mt-2 text-xs text-zinc-500">控制題目中每個數字的大小（不是答案的大小）。</p>
 
         <h2 className="mt-4 text-sm font-bold text-zinc-900">⏱️ 時間限制</h2>

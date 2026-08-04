@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   GRID_COLS,
@@ -10,9 +10,10 @@ import {
   type GridPosition,
 } from '@/lib/coordinateHunt';
 import {
-  useCoordTermCount,
-  useCoordMaxValue,
+  useCoordTermCounts,
+  useCoordMaxValues,
   useCoordTimeLimit,
+  ladderTierValue,
 } from '@/lib/coordinateHuntSettings';
 import { generateProblemSet, type AbacusProblem } from '@/lib/abacus';
 import { useAllSentences } from '@/lib/gameSentences';
@@ -77,9 +78,22 @@ interface Props {
 
 export default function EnglishMathMode({ onBack }: Props) {
   const allSentences = useAllSentences();
-  const termCount = useCoordTermCount();
-  const maxValue = useCoordMaxValue();
+  const termCountOptions = useCoordTermCounts();
+  const maxValueOptions = useCoordMaxValues();
   const timeLimit = useCoordTimeLimit();
+
+  // Consecutive-correct-dig streak drives the difficulty ladder (same
+  // mechanic as 時空戰術隊/憤怒牛): sort selected values ascending, step up
+  // a tier every 10-streak, reset to the easiest tier on a wrong dig.
+  const streakRef = useRef(0);
+  function nextRoundParams() {
+    const sortedTerms = [...termCountOptions].sort((a, b) => a - b);
+    const sortedMax = [...maxValueOptions].sort((a, b) => a - b);
+    return {
+      termCount: ladderTierValue(sortedTerms, streakRef.current),
+      maxValue: ladderTierValue(sortedMax, streakRef.current),
+    };
+  }
 
   const [stage, setStage] = useState<Stage>('idle');
   const [round, setRound] = useState<MathRound | null>(null);
@@ -126,6 +140,7 @@ export default function EnglishMathMode({ onBack }: Props) {
       if (allCollected) {
         setStage('assembling');
       } else {
+        const { termCount, maxValue } = nextRoundParams();
         setRound(makeRound(termCount, maxValue));
         setPlayer(START_POSITION);
         setDugCells([]);
@@ -133,7 +148,8 @@ export default function EnglishMathMode({ onBack }: Props) {
       }
     }, 1200);
     return () => clearTimeout(t);
-  }, [stage, collectedWords.length, sentence?.words.length, termCount, maxValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, collectedWords.length, sentence?.words.length, termCountOptions, maxValueOptions]);
 
   useEffect(() => {
     if (stage !== 'sentenceSuccess') return;
@@ -144,6 +160,7 @@ export default function EnglishMathMode({ onBack }: Props) {
       setCollectedWords([]);
       setAssembled([]);
       setAssembleFeedback('idle');
+      const { termCount, maxValue } = nextRoundParams();
       setRound(makeRound(termCount, maxValue));
       setPlayer(START_POSITION);
       setDugCells([]);
@@ -151,15 +168,18 @@ export default function EnglishMathMode({ onBack }: Props) {
       setStage('playing');
     }, 1600);
     return () => clearTimeout(t);
-  }, [stage, allSentences, termCount, maxValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, allSentences, termCountOptions, maxValueOptions]);
 
   function startGame() {
+    streakRef.current = 0;
     const sen = allSentences[Math.floor(Math.random() * allSentences.length)];
     setSentence(sen);
     setWordRevealQueue(shuffle(sen.words.map((_, i) => i)));
     setCollectedWords([]);
     setAssembled([]);
     setAssembleFeedback('idle');
+    const { termCount, maxValue } = nextRoundParams();
     setRound(makeRound(termCount, maxValue));
     setPlayer(START_POSITION);
     setDugCells([]);
@@ -189,6 +209,7 @@ export default function EnglishMathMode({ onBack }: Props) {
     setDugCells((prev) => [...prev, player]);
     if (samePosition(player, round.answerPos)) {
       playDingSound();
+      streakRef.current += 1;
       const wordIdx = wordRevealQueue[0];
       setCollectedWords((prev) => [...prev, { wordIndex: wordIdx, text: sentence.words[wordIdx] }]);
       setWordRevealQueue((prev) => prev.slice(1));
@@ -196,6 +217,7 @@ export default function EnglishMathMode({ onBack }: Props) {
       setStage('roundSuccess');
     } else {
       playErrorSound();
+      streakRef.current = 0;
       const newLives = lives - 1;
       setLives(newLives);
       setDigFeedback('wrong');
