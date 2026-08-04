@@ -1,5 +1,9 @@
 import { useSyncExternalStore } from 'react';
-import type { SchulteCategory } from '@/data/schulteContent';
+
+// Not strictly limited to schulteContent's SchulteCategory — the same
+// leaderboard mechanism is reused by the 國字/單字 quiz categories embedded
+// in this game, which aren't part of that grid-content type.
+type SchulteCategory = string;
 
 const MAX_ENTRIES = 10;
 const NAME_KEY = 'schulte_last_player_name';

@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import HeroMascot from '@/components/HeroMascot';
 import SchulteGame from './SchulteGame';
+import HanziSchulteQuiz from './HanziSchulteQuiz';
+import WordGridSchulteQuiz from './WordGridSchulteQuiz';
 import {
   CATEGORY_DISPLAY_ORDER,
   CATEGORY_LABELS,
@@ -13,6 +15,9 @@ import {
   type SchulteCategory,
   type NumberPattern,
 } from '@/data/schulteContent';
+
+type ExtraCategory = 'hanzi' | 'wordGrid';
+type ViewMode = SchulteCategory | ExtraCategory;
 
 const CATEGORY_DESC: Record<SchulteCategory, string> = {
   zhuyin: 'ㄅ 到 ㄦ，練習注音符號的視覺搜尋',
@@ -28,8 +33,26 @@ const NUMBER_PATTERN_DESC: Record<NumberPattern, string> = {
   multiplesOf5: '5、10、15⋯⋯數到 125',
 };
 
+const EXTRA_CATEGORY_DISPLAY_ORDER: ExtraCategory[] = ['hanzi', 'wordGrid'];
+const EXTRA_CATEGORY_LABELS: Record<ExtraCategory, string> = {
+  hanzi: '國字複習',
+  wordGrid: '單字複習',
+};
+const EXTRA_CATEGORY_EMOJI: Record<ExtraCategory, string> = {
+  hanzi: '🈶',
+  wordGrid: '🔤',
+};
+const EXTRA_CATEGORY_DESC: Record<ExtraCategory, string> = {
+  hanzi: '自己新增學過的國字，聽發音選出正確答案',
+  wordGrid: '聽發音選英文單字，來源可自訂，答錯 3 次或超時就失敗',
+};
+
+function isExtraCategory(v: ViewMode): v is ExtraCategory {
+  return v === 'hanzi' || v === 'wordGrid';
+}
+
 export default function SchulteView() {
-  const [category, setCategory] = useState<SchulteCategory | null>(null);
+  const [category, setCategory] = useState<ViewMode | null>(null);
   const [numberPattern, setNumberPattern] = useState<NumberPattern | null>(null);
 
   if (category === 'numbers' && !numberPattern) {
@@ -64,6 +87,21 @@ export default function SchulteView() {
               </button>
             ))}
           </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (category && isExtraCategory(category)) {
+    return (
+      <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 py-8">
+        <HeroMascot src="/heroes/cutout-game.png" alt="" />
+        <div className="relative z-10">
+          {category === 'hanzi' ? (
+            <HanziSchulteQuiz onBack={() => setCategory(null)} />
+          ) : (
+            <WordGridSchulteQuiz onBack={() => setCategory(null)} />
+          )}
         </div>
       </main>
     );
@@ -125,6 +163,18 @@ export default function SchulteView() {
               <span className="text-5xl transition-transform group-hover:scale-110">{CATEGORY_EMOJI[key]}</span>
               <span className="text-xl font-bold text-[var(--hero-gold)]">{CATEGORY_LABELS[key]}</span>
               <span className="text-sm leading-relaxed text-zinc-300">{CATEGORY_DESC[key]}</span>
+            </button>
+          ))}
+          {EXTRA_CATEGORY_DISPLAY_ORDER.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setCategory(key)}
+              className="group flex flex-col items-center gap-2 rounded-2xl border-2 border-sky-400 bg-white/10 p-6 text-center shadow-lg transition-all hover:bg-white/20 hover:shadow-xl"
+            >
+              <span className="text-5xl transition-transform group-hover:scale-110">{EXTRA_CATEGORY_EMOJI[key]}</span>
+              <span className="text-xl font-bold text-sky-300">{EXTRA_CATEGORY_LABELS[key]}</span>
+              <span className="text-sm leading-relaxed text-zinc-300">{EXTRA_CATEGORY_DESC[key]}</span>
             </button>
           ))}
         </div>
