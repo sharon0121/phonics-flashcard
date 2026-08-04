@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { playErrorSound } from '@/lib/sound';
+import ZhuyinText from '@/components/ZhuyinText';
 
 interface Tile {
   id: number;
@@ -10,6 +11,9 @@ interface Tile {
 
 interface HeroClimbSpellPhaseProps {
   word: string; // already uppercase
+  zh: string;
+  zhuyin: string;
+  emoji: string;
   speechRate: number;
   onSolved: () => void;
 }
@@ -37,7 +41,7 @@ function speak(text: string, rate: number) {
 // the actual "can you spell it" challenge lives: letters are reshuffled
 // and the child has to place them from memory/by ear, same interaction as
 // the word-vault maze game's spelling step.
-export default function HeroClimbSpellPhase({ word, speechRate, onSolved }: HeroClimbSpellPhaseProps) {
+export default function HeroClimbSpellPhase({ word, zh, zhuyin, emoji, speechRate, onSolved }: HeroClimbSpellPhaseProps) {
   const [pool, setPool] = useState<Tile[]>(() =>
     shuffle(word.split('').map((letter, id) => ({ id, letter }))),
   );
@@ -88,6 +92,11 @@ export default function HeroClimbSpellPhase({ word, speechRate, onSolved }: Hero
   return (
     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/85 p-4 text-center">
       <p className="text-base font-bold text-[var(--hero-gold)]">🔤 聽發音，拼出單字！</p>
+
+      <div className="flex items-center gap-2">
+        <span className="text-4xl">{emoji}</span>
+        <ZhuyinText zh={zh} zhuyin={zhuyin} className="text-lg font-bold text-white" />
+      </div>
 
       <div
         className={`flex gap-1.5 rounded-xl border-2 border-dashed p-2 transition-colors ${

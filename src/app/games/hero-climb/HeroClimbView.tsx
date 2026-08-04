@@ -44,6 +44,7 @@ import LeaderboardPanel from './LeaderboardPanel';
 const START_LIVES = 5;
 const SPEED_BOOST_MS = 10000; // how long a speed-boost pickup lasts
 const SPEED_BOOST_MULTIPLIER = 1.8; // ceiling scroll multiplied by this when speed-boost is active (1.8 × 1.8 = ×3.24 max)
+const BOOST_EASE_RATE = 3; // per second — how fast the scroll multiplier eases toward its target (higher = snappier)
 const FIXED_SCREEN_TOP_PCT = 3; // where the visible window's top edge sits, in world-relative-to-camera terms
 const CHAR_HALF_WIDTH = 5; // percent, for horizontal collision
 const PICKUP_CENTER_TOLERANCE = 2; // percent — how close to a platform's centre the hero must be to collect its letter/item
@@ -287,6 +288,11 @@ export default function HeroClimbView() {
   const collectedItemIdsRef = useRef<Set<string>>(new Set());
   const [collectedItemIds, setCollectedItemIds] = useState<Set<string>>(new Set());
   const speedBoostRef = useRef<{ remainingMs: number } | null>(null);
+  // Eased toward 1 (normal) or SPEED_BOOST_MULTIPLIER (boosted) each frame
+  // rather than snapping instantly — an instant multiplier jump makes the
+  // ceiling's scroll speed (and therefore everything on screen) visibly
+  // jerk the moment a ⚡ is picked up and again when it wears off.
+  const boostFactorRef = useRef(1);
   const [boosting, setBoosting] = useState(false);
   const lastFrameTimeRef = useRef<number | null>(null);
   const runStartTimeRef = useRef<number | null>(null);
@@ -598,7 +604,11 @@ export default function HeroClimbView() {
             setBoosting(false);
           }
         }
-        const scrollMultiplier = difficulty * (speedBoostRef.current ? SPEED_BOOST_MULTIPLIER : 1);
+        // Ease toward the target boost factor instead of snapping to it —
+        // smooths out both the pickup and the wear-off transition.
+        const targetBoostFactor = speedBoostRef.current ? SPEED_BOOST_MULTIPLIER : 1;
+        boostFactorRef.current += (targetBoostFactor - boostFactorRef.current) * Math.min(1, BOOST_EASE_RATE * dt);
+        const scrollMultiplier = difficulty * boostFactorRef.current;
 
         // The ceiling scrolls down at a constant pace regardless of what the
         // hero is doing — this never pauses or reverses for anything,
@@ -716,6 +726,7 @@ export default function HeroClimbView() {
     collectedItemIdsRef.current = new Set();
     setCollectedItemIds(new Set());
     speedBoostRef.current = null;
+    boostFactorRef.current = 1;
     setBoosting(false);
     lastFrameTimeRef.current = null;
     runStartTimeRef.current = null;
@@ -958,6 +969,9 @@ export default function HeroClimbView() {
                 <HeroClimbSpellPhase
                   key={target.word}
                   word={target.word.toUpperCase()}
+                  zh={target.zh}
+                  zhuyin={target.zhuyin}
+                  emoji={target.emoji}
                   speechRate={SPEECH_RATE_VALUES[speechRate]}
                   onSolved={handleSpellSolved}
                 />
