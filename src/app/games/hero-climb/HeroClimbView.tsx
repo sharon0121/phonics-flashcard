@@ -15,7 +15,7 @@ import {
   START_DIFFICULTY_VALUES,
   type WordSourceKey,
 } from '@/lib/heroClimbSettings';
-import { getUsedWordIds, persistUsedWordIds, useReviewWordIds, removeReviewWordId } from '@/lib/heroClimbUsedWords';
+import { persistUsedWordIds, clearUsedWordIds, useReviewWordIds, removeReviewWordId } from '@/lib/heroClimbUsedWords';
 import { useCustomWords } from '@/lib/customWords';
 import {
   generateRows,
@@ -213,13 +213,16 @@ export default function HeroClimbView() {
     initialFromReviewRef.current = result.fromReview;
     return result.word;
   });
-  // Merge localStorage used-words into the in-memory ref after hydration,
-  // then persist back (so the initial word is also recorded).
+  // Used-words reset every time a fresh game starts (mount) rather than
+  // persisting across sessions — a word "already asked" in a previous play
+  // session should be free to come up again the next time the game is
+  // opened, not stay excluded until the entire pool has been exhausted
+  // across every session ever played.
   useEffect(() => {
-    const stored = getUsedWordIds();
-    stored.forEach((id) => usedWordIdsRef.current.add(id));
-    persistUsedWordIds(usedWordIdsRef.current);
+    clearUsedWordIds();
+    usedWordIdsRef.current = new Set();
     if (initialFromReviewRef.current) removeReviewWordId(target.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const outstandingRef = useRef<number[]>(makeLetterQueue(target.word));
   const [filledPositions, setFilledPositions] = useState<boolean[]>(() => new Array(target.word.length).fill(false));
@@ -718,7 +721,8 @@ export default function HeroClimbView() {
     runStartTimeRef.current = null;
     maxDepthRef.current = 0;
     wordsCompletedRef.current = 0;
-    usedWordIdsRef.current = new Set(getUsedWordIds());
+    clearUsedWordIds();
+    usedWordIdsRef.current = new Set();
     reviewStateRef.current = makeReviewPickState();
 
     const result = pickNextWordWithReview(wordPools, usedWordIdsRef.current, reviewPool, reviewStateRef.current);

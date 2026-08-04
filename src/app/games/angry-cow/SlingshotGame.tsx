@@ -19,7 +19,10 @@ export interface SlingshotRound {
 }
 
 interface SlingshotGameProps {
-  makeRound: () => SlingshotRound | null;
+  // Receives the player's current consecutive-correct streak so a caller
+  // whose difficulty settings are a multi-select ladder (as opposed to one
+  // fixed value) can pick the right tier for the next round.
+  makeRound: (streak: number) => SlingshotRound | null;
   onSave: (name: string, score: number) => string;
   onRename: (id: string, name: string) => void;
   lastPlayerName: string;
@@ -399,7 +402,7 @@ export default function SlingshotGame({
 }: SlingshotGameProps) {
   const [clouds] = useState(() => generateClouds());
   const [cloudUrls, setCloudUrls] = useState<string[]>([]);
-  const [round, setRound] = useState<SlingshotRound | null>(() => makeRound());
+  const [round, setRound] = useState<SlingshotRound | null>(() => makeRound(0));
   const [lives, setLives] = useState(startLives);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
@@ -991,7 +994,7 @@ export default function SlingshotGame({
 
   function advanceRound() {
     setHitFlash('none');
-    setRound(makeRound());
+    setRound(makeRound(streakRef.current));
     buildLanes();
     roundDeadlineRef.current = performance.now() + ROUND_TIME_MS;
     phaseRef.current = 'idle';
@@ -1108,7 +1111,7 @@ export default function SlingshotGame({
     setHitFlash('none');
     resetStreak();
     savedIdRef.current = null;
-    setRound(makeRound());
+    setRound(makeRound(0));
     buildLanes();
     roundDeadlineRef.current = performance.now() + ROUND_TIME_MS;
     phaseRef.current = 'idle';

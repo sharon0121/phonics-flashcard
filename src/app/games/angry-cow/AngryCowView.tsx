@@ -10,9 +10,10 @@ import AngryCowLeaderboardPanel from './AngryCowLeaderboardPanel';
 import {
   useAngryCowWordPools,
   useAngryCowSpeechRate,
-  useAngryCowMaxValue,
+  useAngryCowMathRanges,
   useAngryCowMathTerms,
   useAngryCowGameMode,
+  ladderTierValue,
   SPEECH_RATE_VALUES,
 } from '@/lib/angryCowSettings';
 import { makeEnglishRound, makeMathRound } from '@/lib/angryCow';
@@ -28,19 +29,19 @@ export default function AngryCowView() {
   const gameMode    = useAngryCowGameMode();
   const wordPools   = useAngryCowWordPools();
   const speechRate  = useAngryCowSpeechRate();
-  const maxValue    = useAngryCowMaxValue();
+  const mathRanges  = useAngryCowMathRanges();
   const mathTerms   = useAngryCowMathTerms();
   const lastPlayerName = useLastAngryCowPlayerName();
 
   // Update refs inline (before effects) so makeRound always reads current values.
   const wordPoolsRef  = useRef(wordPools);
   const speechRateRef = useRef(speechRate);
-  const maxValueRef   = useRef(maxValue);
+  const mathRangesRef = useRef(mathRanges);
   const mathTermsRef  = useRef(mathTerms);
   const gameModeRef   = useRef(gameMode);
   wordPoolsRef.current  = wordPools;
   speechRateRef.current = speechRate;
-  maxValueRef.current   = maxValue;
+  mathRangesRef.current = mathRanges;
   mathTermsRef.current  = mathTerms;
   gameModeRef.current   = gameMode;
 
@@ -68,12 +69,12 @@ export default function AngryCowView() {
         id: t.id,
         isCorrect: t.isCorrect,
         board: (
-          <div className="flex flex-col items-center gap-1">
-            <div className="rounded-lg bg-white/80 px-2 py-1 text-zinc-900">
+          <div className="flex flex-col items-center gap-0.5 sm:gap-1">
+            <div className="rounded-lg bg-white/80 px-1 py-0.5 text-zinc-900 sm:px-1.5 md:px-2 md:py-1 text-[clamp(0.7rem,2.4vw,1.4rem)]">
               <ZhuyinText zh={t.word.zh} zhuyin={t.word.zhuyin} className="font-black" />
             </div>
             <span onPointerDown={(e) => e.stopPropagation()}>
-              <SpeakButton text={t.word.zh} lang="zh-TW" rate={rate} className="!p-1" />
+              <SpeakButton text={t.word.zh} lang="zh-TW" rate={rate} className="!p-0.5 sm:!p-1" />
             </span>
           </div>
         ),
@@ -81,8 +82,15 @@ export default function AngryCowView() {
     };
   }, []);
 
-  const makeMathSlingshotRound = useCallback((): SlingshotRound => {
-    const round = makeMathRound(maxValueRef.current, mathTermsRef.current);
+  const makeMathSlingshotRound = useCallback((streak: number): SlingshotRound => {
+    // Multi-select difficulty ladder (same mechanic as 時空戰術隊): sort the
+    // selected ranges/term-counts ascending and step up a tier for every
+    // 10-streak of correct answers, capped at the hardest selected tier.
+    const sortedRanges = [...mathRangesRef.current].sort((a, b) => a - b);
+    const sortedTerms = [...mathTermsRef.current].sort((a, b) => a - b);
+    const maxValue = ladderTierValue(sortedRanges, streak);
+    const terms = ladderTierValue(sortedTerms, streak);
+    const round = makeMathRound(maxValue, terms);
     const { nums, ops } = round.problem;
     const expr = nums
       .map((n, i) => (i === 0 ? String(n) : ` ${ops[i - 1] === '+' ? '+' : '−'} ${n}`))
@@ -92,17 +100,17 @@ export default function AngryCowView() {
       targets: round.targets.map((t) => ({
         id: t.id,
         isCorrect: t.isCorrect,
-        board: <span className="px-1 text-xl font-extrabold text-zinc-900">{t.value}</span>,
+        board: <span className="px-1 font-extrabold text-zinc-900 text-[clamp(1rem,2.4vw,1.4rem)]">{t.value}</span>,
       })),
     };
   }, []);
 
-  const makeRound = useCallback((): SlingshotRound | null => {
+  const makeRound = useCallback((streak: number): SlingshotRound | null => {
     const mode = gameModeRef.current;
-    if (mode === 'math')    return makeMathSlingshotRound();
+    if (mode === 'math')    return makeMathSlingshotRound(streak);
     if (mode === 'english') return makeEnglishSlingshotRound();
     // mixed: 50/50 random
-    return Math.random() < 0.5 ? makeEnglishSlingshotRound() : makeMathSlingshotRound();
+    return Math.random() < 0.5 ? makeEnglishSlingshotRound() : makeMathSlingshotRound(streak);
   }, [makeEnglishSlingshotRound, makeMathSlingshotRound]);
 
   const { emoji, title, desc } = MODE_META[gameMode];

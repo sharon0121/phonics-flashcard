@@ -33,6 +33,16 @@ export const ALL_WORD_SOURCES: WordSourceKey[] = [...WORD_SOURCE_DISPLAY_ORDER];
 
 // Actual rate value passed to SpeechSynthesisUtterance.rate.
 export const SPEECH_RATE_VALUES: Record<SpeechRate, number> = { slow: 0.7, normal: 1.0, fast: 1.3 };
+
+// Shared math-difficulty-ladder mechanic (originally 時空戰術隊's): when a
+// math setting is a multi-select list rather than one fixed value, sort the
+// selected values ascending and step one tier for every 10-streak of
+// correct answers, capped at the hardest selected tier. Used by any game
+// whose math settings were converted to this multi-select style.
+export function ladderTierValue(sortedValues: number[], streak: number): number {
+  const idx = Math.min(Math.floor(streak / 10), Math.max(0, sortedValues.length - 1));
+  return sortedValues[Math.max(0, idx)];
+}
 // Starting difficulty multiplier — each tier corresponds to having completed one word-based speed step.
 export const START_DIFFICULTY_VALUES: Record<StartDifficulty, number> = {
   normal: 1.0,

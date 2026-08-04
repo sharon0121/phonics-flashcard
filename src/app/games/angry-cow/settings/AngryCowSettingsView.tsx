@@ -4,10 +4,10 @@ import Link from 'next/link';
 import {
   useAngryCowWordSources, setAngryCowWordSources,
   WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, type WordSourceKey,
-  useAngryCowMaxValue, setAngryCowMaxValue, NUMBER_RANGE_OPTIONS, type AngryCowMaxValue,
+  useAngryCowMathRanges, setAngryCowMathRanges, NUMBER_RANGE_OPTIONS,
   useAngryCowSpeechRate, setAngryCowSpeechRate, type SpeechRate,
   useAngryCowGameMode, setAngryCowGameMode, GAME_MODE_OPTIONS, type AngryCowGameMode,
-  useAngryCowMathTerms, setAngryCowMathTerms, MATH_TERMS_OPTIONS, type AngryCowMathTerms,
+  useAngryCowMathTerms, setAngryCowMathTerms, MATH_TERMS_OPTIONS,
 } from '@/lib/angryCowSettings';
 
 const SPEECH_RATE_OPTIONS: { value: SpeechRate; label: string; desc: string }[] = [
@@ -19,7 +19,7 @@ const SPEECH_RATE_OPTIONS: { value: SpeechRate; label: string; desc: string }[] 
 export default function AngryCowSettingsView() {
   const gameMode   = useAngryCowGameMode();
   const wordSources = useAngryCowWordSources();
-  const maxValue   = useAngryCowMaxValue();
+  const mathRanges = useAngryCowMathRanges();
   const mathTerms  = useAngryCowMathTerms();
   const speechRate = useAngryCowSpeechRate();
 
@@ -30,6 +30,21 @@ export default function AngryCowSettingsView() {
     const next = wordSources.includes(key) ? wordSources.filter((k) => k !== key) : [...wordSources, key];
     setAngryCowWordSources(next);
   }
+
+  function toggleRange(value: number) {
+    const next = mathRanges.includes(value) ? mathRanges.filter((v) => v !== value) : [...mathRanges, value];
+    if (next.length === 0) return;
+    setAngryCowMathRanges(next);
+  }
+
+  function toggleTerms(value: number) {
+    const next = mathTerms.includes(value) ? mathTerms.filter((v) => v !== value) : [...mathTerms, value];
+    if (next.length === 0) return;
+    setAngryCowMathTerms(next);
+  }
+
+  const sortedRanges = [...mathRanges].sort((a, b) => a - b);
+  const sortedTerms = [...mathTerms].sort((a, b) => a - b);
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
@@ -107,41 +122,53 @@ export default function AngryCowSettingsView() {
       {showMath && (
         <>
           <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
-            <h2 className="text-sm font-bold text-zinc-900">🔢 數學版數字範圍</h2>
+            <h2 className="text-sm font-bold text-zinc-900">🔢 數學版數字範圍（可複選）</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              從最小開始，連續答對 10 題升一層 → 目前最高層：{sortedRanges[sortedRanges.length - 1]} 以內
+            </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {NUMBER_RANGE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setAngryCowMaxValue(opt.value as AngryCowMaxValue)}
+                  onClick={() => toggleRange(opt.value)}
                   className={`rounded-lg px-4 py-2 text-sm font-bold ${
-                    maxValue === opt.value ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                    mathRanges.includes(opt.value) ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                   }`}
                 >
                   {opt.label}
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-zinc-500">每個加數最大不超過此範圍。</p>
+            {sortedRanges.length > 1 && (
+              <p className="mt-2 text-[10px] text-zinc-400">
+                進度：{sortedRanges.map((r, i) => `第${i + 1}層：${r}以內`).join(' → ')}
+              </p>
+            )}
           </div>
 
           <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
-            <h2 className="text-sm font-bold text-zinc-900">➕ 幾個數字相加</h2>
+            <h2 className="text-sm font-bold text-zinc-900">➕ 幾個數字相加（可複選）</h2>
+            <p className="mt-1 text-xs text-zinc-500">從最少開始，連續答對 10 題升一層；2 個含加減法，3 個以上為全加法。</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {MATH_TERMS_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setAngryCowMathTerms(opt.value as AngryCowMathTerms)}
+                  onClick={() => toggleTerms(opt.value)}
                   className={`rounded-lg px-4 py-2 text-sm font-bold ${
-                    mathTerms === opt.value ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                    mathTerms.includes(opt.value) ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                   }`}
                 >
                   {opt.label}
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-zinc-500">2 個含加減法；3 個以上為全加法。</p>
+            {sortedTerms.length > 1 && (
+              <p className="mt-2 text-[10px] text-zinc-400">
+                進度：{sortedTerms.map((c, i) => `第${i + 1}層：${c}個數字`).join(' → ')}
+              </p>
+            )}
           </div>
         </>
       )}

@@ -5,18 +5,20 @@ import type { Word } from '@/lib/types';
 import { useCurriculum, getCurrentWeekKey, getActiveWordIds } from '@/lib/curriculum';
 import { useProgress } from '@/lib/progress';
 import { useCustomWords } from '@/lib/customWords';
-import { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, type WordSourceKey } from '@/lib/heroClimbSettings';
+import { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, ladderTierValue, type WordSourceKey } from '@/lib/heroClimbSettings';
 
-export { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, type WordSourceKey };
+export { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES, ladderTierValue, type WordSourceKey };
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 const WORD_SOURCES_KEY  = 'angry_cow_word_sources';
-const MAX_VALUE_KEY     = 'angry_cow_max_value';
+const MATH_RANGES_KEY   = 'angry_cow_math_ranges';
 const SPEECH_RATE_KEY   = 'angry_cow_speech_rate';
 const GAME_MODE_KEY     = 'angry_cow_game_mode';
-const MATH_TERMS_KEY    = 'angry_cow_math_terms';
+const MATH_TERMS_KEY    = 'angry_cow_math_terms_multi';
 
-// ─── Number range ──────────────────────────────────────────────────────────────
+// ─── Number range — multi-select difficulty ladder, same mechanic as 時空戰術隊:
+// sort selected values ascending, every 10-streak of correct answers moves up
+// one tier (capped at the highest selected value). ─────────────────────────────
 export const NUMBER_RANGE_OPTIONS = [
   { value: 10, label: '10 以內' },
   { value: 20, label: '20 以內' },
@@ -48,25 +50,27 @@ export const MATH_TERMS_OPTIONS: { value: AngryCowMathTerms; label: string }[] =
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 const DEFAULT_WORD_SOURCES: WordSourceKey[] = [...ALL_WORD_SOURCES];
-const DEFAULT_MAX_VALUE: AngryCowMaxValue = 20;
+const DEFAULT_MATH_RANGES: number[] = [20];
 const DEFAULT_SPEECH_RATE: SpeechRate = 'normal';
 const DEFAULT_GAME_MODE: AngryCowGameMode = 'english';
-const DEFAULT_MATH_TERMS: AngryCowMathTerms = 3;
+const DEFAULT_MATH_TERMS: number[] = [3];
 
 const EMPTY_WORDS: Word[] = [];
+const VALID_RANGE_VALUES = NUMBER_RANGE_OPTIONS.map((o) => o.value) as number[];
+const VALID_TERMS_VALUES = MATH_TERMS_OPTIONS.map((o) => o.value) as number[];
 
 // ─── External store ───────────────────────────────────────────────────────────
 const listeners = new Set<() => void>();
 let cachedSourcesRaw: string | null = null;
 let cachedSources: WordSourceKey[] = DEFAULT_WORD_SOURCES;
-let cachedMaxValueRaw: string | null = null;
-let cachedMaxValue: AngryCowMaxValue = DEFAULT_MAX_VALUE;
+let cachedRangesRaw: string | null = null;
+let cachedRanges: number[] = DEFAULT_MATH_RANGES;
 let cachedSpeechRaw: string | null = null;
 let cachedSpeechRate: SpeechRate = DEFAULT_SPEECH_RATE;
 let cachedGameModeRaw: string | null = null;
 let cachedGameMode: AngryCowGameMode = DEFAULT_GAME_MODE;
 let cachedMathTermsRaw: string | null = null;
-let cachedMathTerms: AngryCowMathTerms = DEFAULT_MATH_TERMS;
+let cachedMathTerms: number[] = DEFAULT_MATH_TERMS;
 
 function readWordSources(): WordSourceKey[] {
   const raw = localStorage.getItem(WORD_SOURCES_KEY);
@@ -81,14 +85,17 @@ function readWordSources(): WordSourceKey[] {
   return cachedSources;
 }
 
-function readMaxValue(): AngryCowMaxValue {
-  const raw = localStorage.getItem(MAX_VALUE_KEY);
-  if (raw === cachedMaxValueRaw) return cachedMaxValue;
-  cachedMaxValueRaw = raw;
-  const n = raw ? Number(raw) : DEFAULT_MAX_VALUE;
-  const valid = NUMBER_RANGE_OPTIONS.map((o) => o.value) as number[];
-  cachedMaxValue = valid.includes(n) ? (n as AngryCowMaxValue) : DEFAULT_MAX_VALUE;
-  return cachedMaxValue;
+function readMathRanges(): number[] {
+  const raw = localStorage.getItem(MATH_RANGES_KEY);
+  if (raw === cachedRangesRaw) return cachedRanges;
+  cachedRangesRaw = raw;
+  if (raw == null) { cachedRanges = DEFAULT_MATH_RANGES; return cachedRanges; }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const valid = Array.isArray(parsed) ? parsed.filter((v): v is number => VALID_RANGE_VALUES.includes(v as number)) : [];
+    cachedRanges = valid.length > 0 ? valid : DEFAULT_MATH_RANGES;
+  } catch { cachedRanges = DEFAULT_MATH_RANGES; }
+  return cachedRanges;
 }
 
 function readSpeechRate(): SpeechRate {
@@ -107,13 +114,16 @@ function readGameMode(): AngryCowGameMode {
   return cachedGameMode;
 }
 
-function readMathTerms(): AngryCowMathTerms {
+function readMathTerms(): number[] {
   const raw = localStorage.getItem(MATH_TERMS_KEY);
   if (raw === cachedMathTermsRaw) return cachedMathTerms;
   cachedMathTermsRaw = raw;
-  const n = raw ? Number(raw) : DEFAULT_MATH_TERMS;
-  const valid = MATH_TERMS_OPTIONS.map((o) => o.value) as number[];
-  cachedMathTerms = valid.includes(n) ? (n as AngryCowMathTerms) : DEFAULT_MATH_TERMS;
+  if (raw == null) { cachedMathTerms = DEFAULT_MATH_TERMS; return cachedMathTerms; }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const valid = Array.isArray(parsed) ? parsed.filter((v): v is number => VALID_TERMS_VALUES.includes(v as number)) : [];
+    cachedMathTerms = valid.length > 0 ? valid : DEFAULT_MATH_TERMS;
+  } catch { cachedMathTerms = DEFAULT_MATH_TERMS; }
   return cachedMathTerms;
 }
 
@@ -136,13 +146,14 @@ export function setAngryCowWordSources(sources: WordSourceKey[]): void {
   notify();
 }
 
-// ─── Max value ────────────────────────────────────────────────────────────────
-export function useAngryCowMaxValue(): AngryCowMaxValue {
-  return useSyncExternalStore(subscribe, readMaxValue, () => DEFAULT_MAX_VALUE);
+// ─── Math ranges — multi-select ladder ───────────────────────────────────────
+export function useAngryCowMathRanges(): number[] {
+  return useSyncExternalStore(subscribe, readMathRanges, () => DEFAULT_MATH_RANGES);
 }
-export function setAngryCowMaxValue(v: AngryCowMaxValue): void {
+export function setAngryCowMathRanges(values: number[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(MAX_VALUE_KEY, String(v));
+  const safe = values.length > 0 ? values : DEFAULT_MATH_RANGES;
+  localStorage.setItem(MATH_RANGES_KEY, JSON.stringify(safe));
   notify();
 }
 
@@ -166,13 +177,14 @@ export function setAngryCowGameMode(mode: AngryCowGameMode): void {
   notify();
 }
 
-// ─── Math terms ───────────────────────────────────────────────────────────────
-export function useAngryCowMathTerms(): AngryCowMathTerms {
+// ─── Math terms — multi-select ladder ────────────────────────────────────────
+export function useAngryCowMathTerms(): number[] {
   return useSyncExternalStore(subscribe, readMathTerms, () => DEFAULT_MATH_TERMS);
 }
-export function setAngryCowMathTerms(t: AngryCowMathTerms): void {
+export function setAngryCowMathTerms(values: number[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(MATH_TERMS_KEY, String(t));
+  const safe = values.length > 0 ? values : DEFAULT_MATH_TERMS;
+  localStorage.setItem(MATH_TERMS_KEY, JSON.stringify(safe));
   notify();
 }
 
