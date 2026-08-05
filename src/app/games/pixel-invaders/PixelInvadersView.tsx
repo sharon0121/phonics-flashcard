@@ -781,10 +781,11 @@ export default function PixelInvadersView() {
       setTimeout(() => setFlashOk(false), 300);
     } else {
       g.totalWrong++; setTotalWrong(g.totalWrong);
-      g.wrongInPhase++; g.comboStreak=0; g.bulletLevel=1; setBulletLevel(1);
+      g.wrongInPhase++;
+      { const newLv = Math.max(1, g.bulletLevel - 1) as BulletLevel; g.bulletLevel=newLv; g.comboStreak=(newLv-1)*5; setBulletLevel(newLv); }
       setFlashBad(true); setTimeout(() => setFlashBad(false), 420);
       setWrongCount(g.wrongInPhase);
-      setTimeout(() => setQuestion(pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, 0, settingsRef.current.quizMode, wordTiersRef.current)), 420);
+      setTimeout(() => setQuestion(pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, g.comboStreak, settingsRef.current.quizMode, wordTiersRef.current)), 420);
     }
   }, []);
 
@@ -815,7 +816,6 @@ export default function PixelInvadersView() {
             : g.bulletLevel <= 3 ? [GUN_TIPS[0], GUN_TIPS[2]]
             : GUN_TIPS;
           spawns.forEach(t => g.bullets.push({ id:uid(), x:g.px+t.dx, y:g.py+t.dy }));
-          if (settingsRef.current.shootSound) playSound((`shoot${g.bulletLevel}`) as SoundKind);
         }
 
         g.bullets  = g.bullets.filter(b  => { b.y-=BULLET_SPD; return b.y>-20; });
@@ -981,9 +981,10 @@ export default function PixelInvadersView() {
         setQuizSecsLeft(sl);
         if (g.quizTimer <= 0) {
           g.totalWrong++; setTotalWrong(g.totalWrong);
-          g.wrongInPhase++; g.comboStreak=0; g.bulletLevel=1; setBulletLevel(1);
+          g.wrongInPhase++;
+          { const newLv = Math.max(1, g.bulletLevel - 1) as BulletLevel; g.bulletLevel=newLv; g.comboStreak=(newLv-1)*5; setBulletLevel(newLv); }
           setWrongCount(g.wrongInPhase); setFlashBad(true);
-          const newQ = pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, 0, settingsRef.current.quizMode, wordTiersRef.current);
+          const newQ = pickQuestion(settingsRef.current.ranges, settingsRef.current.operandCounts, g.comboStreak, settingsRef.current.quizMode, wordTiersRef.current);
           setTimeout(() => {
             setFlashBad(false);
             setQuestion(newQ);

@@ -39,6 +39,14 @@ function speak(text: string, rate: number) {
   window.speechSynthesis.speak(utterance);
 }
 
+function speakZh(text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'zh-TW';
+  utterance.rate = 0.9;
+  window.speechSynthesis.speak(utterance);
+}
+
 interface Round {
   correct: Word;
   choices: Word[];
@@ -122,6 +130,8 @@ export default function WordGridSchulteQuiz({ onBack }: Props) {
     if (stageRef.current !== 'playing' || !round || justSolved) return;
     if (choice.id === round.correct.id) {
       playCollectSound();
+      speak(round.correct.word, rate);
+      setTimeout(() => speakZh(round.correct.zh), 600);
       setJustSolved(true);
       const nextRemaining = remaining.filter((w) => w.id !== choice.id);
       setRemaining(nextRemaining);

@@ -30,6 +30,14 @@ function speak(text: string) {
   window.speechSynthesis.speak(utterance);
 }
 
+function speakZh(text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'zh-TW';
+  utterance.rate = 0.9;
+  window.speechSynthesis.speak(utterance);
+}
+
 export default function PuzzlePhase({ word, collectedLetters, onReplaySame, onNext }: PuzzlePhaseProps) {
   const [pool, setPool] = useState<Tile[]>(() =>
     shuffle(collectedLetters.map((letter, id) => ({ id, letter }))),
@@ -94,6 +102,8 @@ export default function PuzzlePhase({ word, collectedLetters, onReplaySame, onNe
     const attempt = placed.map((t) => t.letter).join('');
     if (attempt === word.word) {
       setSolved(true);
+      speak(word.word);
+      setTimeout(() => speakZh(word.zh), 700);
       const finalStars = hintStage === 0 ? 3 : hintStage <= 2 ? 2 : 1;
       recordWordCompletion(word.word, word.zh, word.emoji, finalStars, Date.now());
       return;

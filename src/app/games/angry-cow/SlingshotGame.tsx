@@ -973,8 +973,14 @@ export default function SlingshotGame({
   }
 
   function resetStreak() {
-    streakRef.current = 0;
-    setStreak(0);
+    const cur = streakRef.current;
+    // Drop one tier instead of resetting to zero:
+    // axe (≥10) → spiky start (5), spiky (≥5) → 0, normal → 0
+    const next = cur >= STREAK_TIER_AXE ? STREAK_TIER_SPIKY
+      : cur >= STREAK_TIER_SPIKY ? 0
+      : 0;
+    streakRef.current = next;
+    setStreak(next);
   }
 
   // Ran out of time before the player even started aiming this round —
