@@ -330,7 +330,11 @@ export default function KlotskiBoard({
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
-                className={`absolute flex touch-none items-center justify-center rounded-2xl border-[3px] bg-white shadow-md ease-out ${ANIMAL_ACCENT[animal]} ${
+                className={`absolute flex touch-none items-center justify-center rounded-2xl border-[3px] shadow-md ease-out ${ANIMAL_ACCENT[animal]} ${
+                  animal === 'hero'
+                    ? 'bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-200 shadow-amber-400/60'
+                    : 'bg-white'
+                } ${
                   isDragging ? 'z-20 scale-[1.05] cursor-grabbing ring-4 ring-white' : 'z-10 cursor-grab transition-all duration-200'
                 } ${isHinted ? 'animate-pulse ring-4 ring-[var(--hero-gold)]' : ''}`}
                 style={{
