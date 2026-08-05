@@ -21,7 +21,9 @@ export interface ProgressEntry {
   canUnderstand: boolean;
   learnedDate: string;
   needsReinforcement?: boolean;
-  lastPrinted?: number; // Unix timestamp (ms)
+  lastPrintedSingle?: number; // 純英文
+  lastPrintedDouble?: number; // 雙面卡
+  lastPrintedStudy?: number;  // 學習卡
 }
 
 export type ProgressMap = Record<string, ProgressEntry>;

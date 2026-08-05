@@ -47,14 +47,18 @@ export default function PrintModal({ words: allWords, title, onClose }: Props) {
   const [printMode, setPrintMode] = useState<PrintMode>('single');
   const [showOnlyUnprinted, setShowOnlyUnprinted] = useState(false);
 
+  const printKey = printMode === 'single' ? 'lastPrintedSingle'
+    : printMode === 'double' ? 'lastPrintedDouble'
+    : 'lastPrintedStudy';
+
   const printedCount = useMemo(
-    () => allWords.filter((w) => progress[w.id]?.lastPrinted).length,
-    [allWords, progress],
+    () => allWords.filter((w) => progress[w.id]?.[printKey]).length,
+    [allWords, progress, printKey],
   );
 
   const words = useMemo(
-    () => showOnlyUnprinted ? allWords.filter((w) => !progress[w.id]?.lastPrinted) : allWords,
-    [allWords, showOnlyUnprinted, progress],
+    () => showOnlyUnprinted ? allWords.filter((w) => !progress[w.id]?.[printKey]) : allWords,
+    [allWords, showOnlyUnprinted, progress, printKey],
   );
 
   const pages = useMemo(() => chunk(words, perPage), [words, perPage]);
@@ -63,12 +67,12 @@ export default function PrintModal({ words: allWords, title, onClose }: Props) {
   const cardHeightMm = (PAGE_HEIGHT_MM - SAFETY_MM) / rows;
 
   function handlePrint() {
-    markWordsAsPrinted(words.map((w) => w.id));
+    markWordsAsPrinted(words.map((w) => w.id), printMode);
     setTimeout(() => window.print(), 50);
   }
 
   function handleClearPrinted() {
-    clearWordsPrinted(allWords.map((w) => w.id));
+    clearWordsPrinted(allWords.map((w) => w.id), printMode);
   }
 
   const pageCount = printMode === 'double' ? pages.length * 2 : pages.length;
@@ -151,13 +155,13 @@ export default function PrintModal({ words: allWords, title, onClose }: Props) {
               {/* ── 已印過的單字（小標籤）── */}
               {!showOnlyUnprinted && printedCount > 0 && (
                 <div className="mt-2 flex max-h-16 flex-wrap gap-1 overflow-y-auto">
-                  {allWords.filter((w) => progress[w.id]?.lastPrinted).map((w) => (
+                  {allWords.filter((w) => progress[w.id]?.[printKey]).map((w) => (
                     <span
                       key={w.id}
                       className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700"
                     >
                       ✓ {w.word}
-                      <span className="text-emerald-500">{daysAgo(progress[w.id].lastPrinted!)}</span>
+                      <span className="text-emerald-500">{daysAgo(progress[w.id][printKey]!)}</span>
                     </span>
                   ))}
                 </div>

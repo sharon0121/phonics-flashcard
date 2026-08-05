@@ -121,32 +121,40 @@ export function clearReinforcementFresh(wordId: string): void {
   });
 }
 
-export function markWordsAsPrinted(wordIds: string[]): void {
+type PrintMode = 'single' | 'double' | 'study';
+const PRINT_KEY: Record<PrintMode, 'lastPrintedSingle' | 'lastPrintedDouble' | 'lastPrintedStudy'> = {
+  single: 'lastPrintedSingle',
+  double: 'lastPrintedDouble',
+  study:  'lastPrintedStudy',
+};
+
+export function markWordsAsPrinted(wordIds: string[], mode: PrintMode): void {
   if (typeof window === 'undefined' || wordIds.length === 0) return;
   const fresh = loadProgress();
   const now = Date.now();
+  const key = PRINT_KEY[mode];
   const updated = { ...fresh };
   for (const id of wordIds) {
-    updated[id] = {
-      canPronounce: fresh[id]?.canPronounce ?? false,
-      canUnderstand: fresh[id]?.canUnderstand ?? false,
-      learnedDate: fresh[id]?.learnedDate ?? new Date().toISOString().slice(0, 10),
-      ...(fresh[id]?.needsReinforcement !== undefined && { needsReinforcement: fresh[id].needsReinforcement }),
-      lastPrinted: now,
+    const base = fresh[id] ?? {
+      canPronounce: false,
+      canUnderstand: false,
+      learnedDate: new Date().toISOString().slice(0, 10),
     };
+    updated[id] = { ...base, [key]: now };
   }
   saveProgress(updated);
 }
 
-export function clearWordsPrinted(wordIds: string[]): void {
+export function clearWordsPrinted(wordIds: string[], mode: PrintMode): void {
   if (typeof window === 'undefined' || wordIds.length === 0) return;
   const fresh = loadProgress();
+  const key = PRINT_KEY[mode];
   const updated = { ...fresh };
   for (const id of wordIds) {
-    if (updated[id]?.lastPrinted) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { lastPrinted: _, ...rest } = updated[id];
-      updated[id] = rest;
+    if (updated[id]?.[key]) {
+      const entry = { ...updated[id] };
+      delete entry[key];
+      updated[id] = entry;
     }
   }
   saveProgress(updated);

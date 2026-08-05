@@ -54,6 +54,10 @@ export default function PrintView() {
   const [printMode, setPrintMode] = useState<PrintMode>('double');
   const [showOnlyUnprinted, setShowOnlyUnprinted] = useState(false);
 
+  const printKey = printMode === 'single' ? 'lastPrintedSingle'
+    : printMode === 'double' ? 'lastPrintedDouble'
+    : 'lastPrintedStudy';
+
   const phaseInfo = phases.find((p) => p.phase === phase) ?? phases[0];
   const allWordsInPhase = getWordsByPhase(phase);
 
@@ -70,14 +74,14 @@ export default function PrintView() {
   const words = useMemo(
     () =>
       showOnlyUnprinted
-        ? allFilteredWords.filter((w) => !progress[w.id]?.lastPrinted)
+        ? allFilteredWords.filter((w) => !progress[w.id]?.[printKey])
         : allFilteredWords,
-    [allFilteredWords, showOnlyUnprinted, progress],
+    [allFilteredWords, showOnlyUnprinted, progress, printKey],
   );
 
   const printedCount = useMemo(
-    () => allFilteredWords.filter((w) => progress[w.id]?.lastPrinted).length,
-    [allFilteredWords, progress],
+    () => allFilteredWords.filter((w) => progress[w.id]?.[printKey]).length,
+    [allFilteredWords, progress, printKey],
   );
 
   const pages = useMemo(() => chunk(words, perPage), [words, perPage]);
@@ -86,12 +90,12 @@ export default function PrintView() {
   const cardHeightMm = (PAGE_HEIGHT_MM - SAFETY_MARGIN_MM) / rows;
 
   function handlePrint() {
-    markWordsAsPrinted(words.map((w) => w.id));
+    markWordsAsPrinted(words.map((w) => w.id), printMode);
     setTimeout(() => window.print(), 50);
   }
 
   function handleClearPrinted() {
-    clearWordsPrinted(allFilteredWords.map((w) => w.id));
+    clearWordsPrinted(allFilteredWords.map((w) => w.id), printMode);
   }
 
   const pageCount = printMode === 'double' ? pages.length * 2 : pages.length;
@@ -248,7 +252,7 @@ export default function PrintView() {
             {!showOnlyUnprinted && printedCount > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {allFilteredWords
-                  .filter((w) => progress[w.id]?.lastPrinted)
+                  .filter((w) => progress[w.id]?.[printKey])
                   .map((w) => (
                     <span
                       key={w.id}
@@ -256,7 +260,7 @@ export default function PrintView() {
                     >
                       ✓ {w.word}
                       <span className="text-emerald-500 text-[10px]">
-                        {daysAgo(progress[w.id].lastPrinted!)}
+                        {daysAgo(progress[w.id][printKey]!)}
                       </span>
                     </span>
                   ))}
