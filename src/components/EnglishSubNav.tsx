@@ -13,6 +13,7 @@ const sectionItems = [
   { href: '/browse', label: '自然發音字卡' },
   { href: '/sight-words', label: '重要單字卡' },
   { href: '/custom-words', label: '自訂單字' },
+  { href: '/print', label: '列印字卡' },
   { href: '/progress', label: '學習進度' },
   { href: '/quiz', label: '學習測驗' },
 ];
