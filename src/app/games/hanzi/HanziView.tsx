@@ -29,12 +29,12 @@ interface Round {
   choices: HanziWord[];
 }
 
-function makeRound(pool: HanziWord[], allWords: HanziWord[]): Round | null {
+function makeRound(pool: HanziWord[], allWords: HanziWord[], numChoices = 9): Round | null {
   if (pool.length === 0) return null;
   const correct = pool[Math.floor(Math.random() * pool.length)];
   const distractorSrc = allWords.filter((w) => w.id !== correct.id);
-  const numChoices = Math.min(4, distractorSrc.length + 1);
-  const distractors = shuffle(distractorSrc).slice(0, numChoices - 1);
+  const n = Math.min(numChoices, distractorSrc.length + 1);
+  const distractors = shuffle(distractorSrc).slice(0, n - 1);
   return { correct, choices: shuffle([correct, ...distractors]) };
 }
 
@@ -42,17 +42,24 @@ export default function HanziView() {
   const words = useHanziWords();
   const pool = words.filter((w) => w.needsPractice);
 
-  const [round, setRound] = useState<Round | null>(() => makeRound(pool, words));
+  const [gridSize, setGridSize] = useState<3 | 4 | 5>(3);
+  const [round, setRound] = useState<Round | null>(() => makeRound(pool, words, 9));
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongId, setWrongId] = useState<string | null>(null);
   const [justSolved, setJustSolved] = useState(false);
 
   const nextRound = useCallback(() => {
-    const r = makeRound(pool, words);
+    const r = makeRound(pool, words, gridSize * gridSize);
     setRound(r);
     setJustSolved(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool.map((w) => w.id).join(','), words.map((w) => w.id).join(',')]);
+  }, [pool.map((w) => w.id).join(','), words.map((w) => w.id).join(','), gridSize]);
+
+  useEffect(() => {
+    setRound(makeRound(pool, words, gridSize * gridSize));
+    setJustSolved(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gridSize]);
 
   // Speak the target character whenever a fresh round is ready to answer.
   useEffect(() => {
@@ -102,6 +109,24 @@ export default function HanziView() {
         <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">🈶 國字複習</h1>
         <p className="mt-1 text-sm text-zinc-300">聽發音，點出正確的國字！</p>
 
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-xs font-bold text-zinc-400">格子大小：</span>
+          {([3, 4, 5] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setGridSize(s)}
+              className={`rounded-lg px-3 py-1 text-sm font-bold transition-colors ${
+                gridSize === s
+                  ? 'bg-[var(--hero-gold)] text-zinc-900'
+                  : 'bg-white/10 text-zinc-300 hover:bg-white/20'
+              }`}
+            >
+              {s}×{s}
+            </button>
+          ))}
+        </div>
+
         {pool.length < 2 ? (
           <div className="mt-8 flex flex-col items-center gap-3 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-6 text-center">
             <span className="text-5xl">📝</span>
@@ -131,7 +156,11 @@ export default function HanziView() {
               <span>✅ 答對 {correctCount} 題</span>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div
+              className={`mt-4 grid gap-2 ${
+                gridSize === 3 ? 'grid-cols-3' : gridSize === 4 ? 'grid-cols-4' : 'grid-cols-5'
+              }`}
+            >
               {round.choices.map((choice) => {
                 const wrong = wrongId === choice.id;
                 const solvedCorrect = justSolved && choice.id === round.correct.id;
@@ -141,7 +170,9 @@ export default function HanziView() {
                     type="button"
                     onClick={() => handleTap(choice)}
                     disabled={justSolved}
-                    className={`flex aspect-square items-center justify-center rounded-2xl border-2 text-5xl font-bold shadow transition-colors ${
+                    className={`flex aspect-square items-center justify-center rounded-2xl border-2 font-bold shadow transition-colors ${
+                      gridSize === 3 ? 'text-4xl' : gridSize === 4 ? 'text-3xl' : 'text-2xl'
+                    } ${
                       solvedCorrect
                         ? 'border-emerald-400 bg-emerald-100 text-emerald-600'
                         : wrong

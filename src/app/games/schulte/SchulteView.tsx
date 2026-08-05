@@ -219,7 +219,6 @@ export default function SchulteView() {
                 onClick={() => setCategory(c.key)}
                 className={`group flex flex-col items-center gap-2 rounded-2xl border-2 ${colors.border} ${colors.bg} p-6 text-center shadow-lg transition-all hover:shadow-xl`}
               >
-                <span className="text-5xl transition-transform group-hover:scale-110">{c.emoji}</span>
                 <span className={`text-xl font-bold ${colors.text}`}>{c.label}</span>
                 <span className="text-sm leading-relaxed text-zinc-300">{c.desc}</span>
               </button>

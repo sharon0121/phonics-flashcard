@@ -216,8 +216,8 @@ export default function SchulteGame({ category, numberPattern, onBack }: Props) 
           </div>
 
           <div
-            className="grid gap-2"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, width: 'min(92vw, 26rem)' }}
+            className="grid w-full gap-2"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
           >
             {cells.map((cell) => {
               const done = completed.has(cell.seqIndex);
