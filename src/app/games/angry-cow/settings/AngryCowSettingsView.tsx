@@ -9,6 +9,12 @@ import {
   useAngryCowGameMode, setAngryCowGameMode, GAME_MODE_OPTIONS, type AngryCowGameMode,
   useAngryCowMathTerms, setAngryCowMathTerms, MATH_TERMS_OPTIONS,
 } from '@/lib/angryCowSettings';
+import {
+  useAngryCowAnimalType, setAngryCowAnimalType,
+  useAngryCowUnlockedAnimals,
+  getAngryCowTotalCorrect,
+  ALL_ANIMAL_DEFS, UNLOCK_MILESTONES,
+} from '@/lib/angryCowUnlocks';
 
 const SPEECH_RATE_OPTIONS: { value: SpeechRate; label: string; desc: string }[] = [
   { value: 'slow',   label: '慢速', desc: '×0.7' },
@@ -17,11 +23,14 @@ const SPEECH_RATE_OPTIONS: { value: SpeechRate; label: string; desc: string }[] 
 ];
 
 export default function AngryCowSettingsView() {
-  const gameMode   = useAngryCowGameMode();
-  const wordSources = useAngryCowWordSources();
-  const mathRanges = useAngryCowMathRanges();
-  const mathTerms  = useAngryCowMathTerms();
-  const speechRate = useAngryCowSpeechRate();
+  const gameMode       = useAngryCowGameMode();
+  const wordSources    = useAngryCowWordSources();
+  const mathRanges     = useAngryCowMathRanges();
+  const mathTerms      = useAngryCowMathTerms();
+  const speechRate     = useAngryCowSpeechRate();
+  const animalType     = useAngryCowAnimalType();
+  const unlockedAnimals = useAngryCowUnlockedAnimals();
+  const totalCorrect   = getAngryCowTotalCorrect();
 
   const showEnglish = gameMode === 'english' || gameMode === 'mixed';
   const showMath    = gameMode === 'math'    || gameMode === 'mixed';
@@ -192,6 +201,47 @@ export default function AngryCowSettingsView() {
           ))}
         </div>
         <p className="mt-2 text-xs text-zinc-500">英文版牌子上喇叭按鈕的朗讀速度。</p>
+      </div>
+
+      {/* ── 動物角色選擇 ────────────────────────────────── */}
+      <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
+        <h2 className="text-sm font-bold text-zinc-900">🐮 選擇登場動物</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          已解鎖 {unlockedAnimals.length}/6 種・累積答對 {totalCorrect} 題・每答對 5 題解鎖新角色！
+        </p>
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {ALL_ANIMAL_DEFS.map((a) => {
+            const isUnlocked = unlockedAnimals.includes(a.type);
+            const isSelected = animalType === a.type;
+            const milestone = UNLOCK_MILESTONES.find((m) => m.animal === a.type);
+            return (
+              <button
+                key={a.type}
+                type="button"
+                disabled={!isUnlocked}
+                onClick={() => setAngryCowAnimalType(a.type)}
+                className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-colors disabled:cursor-not-allowed ${
+                  !isUnlocked
+                    ? 'border-zinc-200 bg-zinc-50 opacity-50'
+                    : isSelected
+                      ? 'border-[var(--hero-gold)] bg-amber-50 shadow'
+                      : 'border-zinc-200 bg-white hover:bg-zinc-100'
+                }`}
+              >
+                <span className="text-3xl">{isUnlocked ? a.emoji : '🔒'}</span>
+                <span className={`text-xs font-bold ${isSelected ? 'text-amber-700' : 'text-zinc-700'}`}>
+                  {a.label}
+                </span>
+                {!isUnlocked && milestone && (
+                  <span className="text-[10px] text-zinc-400">{milestone.threshold}題</span>
+                )}
+                {isSelected && (
+                  <span className="text-[10px] font-bold text-amber-600">使用中</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </main>
   );

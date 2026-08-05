@@ -30,6 +30,7 @@ interface SlingshotGameProps {
   animalType?: AnimalType;
   projectileEmoji?: string;
   startLives?: number;
+  onCorrect?: () => void;
 }
 
 // --- Power bar: auto-oscillating "distance" meter, in game-meters ------
@@ -692,6 +693,7 @@ export default function SlingshotGame({
   lastPlayerName,
   animalType = 'cow',
   startLives = 5,
+  onCorrect,
 }: SlingshotGameProps) {
   const [clouds] = useState(() => generateClouds());
   const [cloudUrls, setCloudUrls] = useState<string[]>([]);
@@ -1234,6 +1236,7 @@ export default function SlingshotGame({
       playExplosionSound();
       window.setTimeout(() => playDingSound(), 120);
       registerStreakHit();
+      onCorrect?.();
     } else {
       const nextLives = livesRef.current - 1;
       setLives(nextLives);

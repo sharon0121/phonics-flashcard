@@ -18,6 +18,11 @@ import {
 } from '@/lib/angryCowSettings';
 import { makeEnglishRound, makeMathRound } from '@/lib/angryCow';
 import { recordAngryCowRun, renameAngryCowRecord, useLastAngryCowPlayerName } from '@/lib/angryCowHistory';
+import {
+  addAngryCowCorrect,
+  useAngryCowAnimalType,
+  type UnlockMilestone,
+} from '@/lib/angryCowUnlocks';
 
 const MODE_META = {
   english: { emoji: '🔤', title: '射擊吧！憤怒牛！英文版',   desc: '看清楚上方的英文單字，射擊拿著正確中文意思牌子的牛，射錯會扣一顆心！' },
@@ -32,6 +37,21 @@ export default function AngryCowView() {
   const mathRanges  = useAngryCowMathRanges();
   const mathTerms   = useAngryCowMathTerms();
   const lastPlayerName = useLastAngryCowPlayerName();
+  const animalType  = useAngryCowAnimalType();
+
+  const [unlockPopup, setUnlockPopup] = useState<UnlockMilestone | null>(null);
+
+  // Auto-dismiss unlock popup after 3 s.
+  useEffect(() => {
+    if (!unlockPopup) return;
+    const id = setTimeout(() => setUnlockPopup(null), 3000);
+    return () => clearTimeout(id);
+  }, [unlockPopup]);
+
+  function handleCorrect() {
+    const milestone = addAngryCowCorrect();
+    if (milestone) setUnlockPopup(milestone);
+  }
 
   // Update refs inline (before effects) so makeRound always reads current values.
   const wordPoolsRef  = useRef(wordPools);
@@ -117,6 +137,23 @@ export default function AngryCowView() {
 
   return (
     <main className="relative mx-auto w-full max-w-7xl flex-1 px-4 py-2 sm:py-8">
+      {unlockPopup && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setUnlockPopup(null)}
+        >
+          <div className="mx-4 flex flex-col items-center rounded-3xl border-4 border-[var(--hero-gold)] bg-gradient-to-br from-fuchsia-950 via-indigo-950 to-black p-8 text-center shadow-2xl">
+            <div className="animate-bounce text-7xl">{unlockPopup.emoji}</div>
+            <h2 className="mt-3 text-2xl font-extrabold text-[var(--hero-gold)]">🎉 解鎖新角色！</h2>
+            <p className="mt-1 text-xl font-bold text-white">{unlockPopup.label}登場！</p>
+            <p className="mt-2 text-sm text-zinc-400">累積答對 {unlockPopup.threshold} 題達成</p>
+            <p className="mt-1 text-xs text-zinc-500">到設定頁選擇登場動物 ⚙️</p>
+            <p className="mt-4 text-xs text-zinc-500">點任意處繼續</p>
+          </div>
+        </div>
+      )}
       <div className="relative z-10">
         <div className="flex items-center justify-between">
           <Link
@@ -157,8 +194,10 @@ export default function AngryCowView() {
               onSave={(name, score) => recordAngryCowRun(gameMode, name, score, Date.now())}
               onRename={renameAngryCowRecord}
               lastPlayerName={lastPlayerName}
+              animalType={animalType}
               animalEmoji="🐮"
               projectileEmoji="🐦"
+              onCorrect={handleCorrect}
             />
           </div>
         </div>
