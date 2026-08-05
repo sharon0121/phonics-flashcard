@@ -30,7 +30,8 @@ interface SlingshotGameProps {
   animalType?: AnimalType;
   projectileEmoji?: string;
   startLives?: number;
-  onCorrect?: () => void;
+  onStreakChange?: (streak: number) => void;
+  onGameStart?: () => void;
 }
 
 // --- Power bar: auto-oscillating "distance" meter, in game-meters ------
@@ -693,7 +694,8 @@ export default function SlingshotGame({
   lastPlayerName,
   animalType = 'cow',
   startLives = 5,
-  onCorrect,
+  onStreakChange,
+  onGameStart,
 }: SlingshotGameProps) {
   const [clouds] = useState(() => generateClouds());
   const [cloudUrls, setCloudUrls] = useState<string[]>([]);
@@ -1236,7 +1238,6 @@ export default function SlingshotGame({
       playExplosionSound();
       window.setTimeout(() => playDingSound(), 120);
       registerStreakHit();
-      onCorrect?.();
     } else {
       const nextLives = livesRef.current - 1;
       setLives(nextLives);
@@ -1262,6 +1263,7 @@ export default function SlingshotGame({
     const next = streakRef.current + 1;
     streakRef.current = next;
     setStreak(next);
+    onStreakChange?.(next);
     if (next === STREAK_TIER_SPIKY) {
       setTierUpBanner({ text: '🔥 長刺球解鎖！', key: performance.now() });
       playCelebrationChime();
@@ -1291,6 +1293,7 @@ export default function SlingshotGame({
       : 0;
     streakRef.current = next;
     setStreak(next);
+    onStreakChange?.(next);
   }
 
   // Ran out of time before the player even started aiming this round —
@@ -1431,6 +1434,7 @@ export default function SlingshotGame({
     buildLanes();
     roundDeadlineRef.current = performance.now() + ROUND_TIME_MS;
     phaseRef.current = 'idle';
+    onGameStart?.();
   }
 
   function handleSaveRename() {

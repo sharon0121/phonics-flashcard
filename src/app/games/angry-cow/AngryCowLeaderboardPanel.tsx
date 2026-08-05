@@ -4,6 +4,7 @@ import { useAngryCowLeaderboard } from '@/lib/angryCowHistory';
 import type { AngryCowMode } from '@/lib/angryCow';
 
 const TOP_N = 15;
+const TOP_COMPACT = 8;
 
 function Row({ rank, name, score }: { rank: number; name: string; score: number }) {
   return (
@@ -20,13 +21,42 @@ function Row({ rank, name, score }: { rank: number; name: string; score: number 
 export default function AngryCowLeaderboardPanel({
   mode,
   matchHeight,
+  compact,
 }: {
   mode: AngryCowMode;
   matchHeight?: number | null;
+  compact?: boolean;
 }) {
   const leaderboard = useAngryCowLeaderboard(mode);
-  const top = leaderboard.slice(0, TOP_N);
 
+  // Compact horizontal strip — shown below the game panel in full-width layout.
+  if (compact) {
+    const top = leaderboard.slice(0, TOP_COMPACT);
+    return (
+      <div className="flex w-full items-center gap-2 rounded-xl border border-white/15 bg-white/8 px-3 py-2">
+        <span className="shrink-0 text-xs font-bold text-zinc-400">🏆 排行</span>
+        {leaderboard.length === 0 ? (
+          <span className="text-xs text-zinc-500">還沒有任何紀錄</span>
+        ) : (
+          <div className="flex flex-1 gap-1.5 overflow-x-auto">
+            {top.map((r, i) => (
+              <div
+                key={r.id}
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-white/10 px-2 py-0.5"
+              >
+                <span className="text-[10px] font-extrabold text-zinc-500">#{i + 1}</span>
+                <span className="max-w-[5rem] truncate text-[10px] font-bold text-white">{r.name}</span>
+                <span className="text-[10px] text-amber-400">{r.score}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <span className="shrink-0 text-[10px] text-zinc-600">{leaderboard.length} 筆</span>
+      </div>
+    );
+  }
+
+  const top = leaderboard.slice(0, TOP_N);
   return (
     <>
       {/* Mobile/narrow: short fixed-height horizontal scroller. */}

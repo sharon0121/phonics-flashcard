@@ -22,7 +22,7 @@ import { playCelebrationChime, playClimbSound, playErrorSound } from '@/lib/soun
 // character's own saturated face art reads clearly instead of competing
 // with a background tint.
 const ANIMAL_ACCENT: Record<AnimalKind, string> = {
-  hero: 'border-amber-600',
+  hero: 'border-yellow-400',
   crab: 'border-orange-600',
   giraffe: 'border-yellow-600',
   rabbit: 'border-rose-500',
@@ -330,10 +330,10 @@ export default function KlotskiBoard({
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
-                className={`absolute flex touch-none items-center justify-center rounded-2xl border-[3px] shadow-md ease-out ${ANIMAL_ACCENT[animal]} ${
+                className={`absolute flex touch-none items-center justify-center rounded-2xl shadow-md ease-out ${
                   animal === 'hero'
-                    ? 'bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-200 shadow-amber-400/60'
-                    : 'bg-white'
+                    ? 'border-4 border-yellow-400 bg-gradient-to-br from-red-900 to-red-950 shadow-red-700/70'
+                    : `border-[3px] bg-white ${ANIMAL_ACCENT[animal]}`
                 } ${
                   isDragging ? 'z-20 scale-[1.05] cursor-grabbing ring-4 ring-white' : 'z-10 cursor-grab transition-all duration-200'
                 } ${isHinted ? 'animate-pulse ring-4 ring-[var(--hero-gold)]' : ''}`}

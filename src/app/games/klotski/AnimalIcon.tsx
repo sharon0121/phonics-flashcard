@@ -24,25 +24,32 @@ export const ANIMAL_LABEL: Record<AnimalKind, string> = {
 const OUTLINE = '#2b2b2b';
 const BLUSH = '#ffb3c1';
 
-// Reuses the site's own hero palette (--hero-red / --hero-blue / --hero-gold
-// from globals.css) so the escaping piece reads as "the same hero" as the
-// rest of the app, not a generic character.
+// Spider-hero: crimson mask with web pattern + large angular white eyes.
 function Hero() {
   return (
     <svg viewBox="0 0 100 100" className="h-full w-full">
-      <path d="M20 60 Q10 90 32 92 Q30 70 40 62 Z" fill="#e0262f" stroke={OUTLINE} strokeWidth="5" strokeLinejoin="round" />
-      <path d="M80 60 Q90 90 68 92 Q70 70 60 62 Z" fill="#e0262f" stroke={OUTLINE} strokeWidth="5" strokeLinejoin="round" />
-      <rect x="14" y="14" width="72" height="72" rx="24" fill="#ffdcb0" stroke={OUTLINE} strokeWidth="6" />
-      <path d="M16 30 Q14 12 50 12 Q86 12 84 30 Q68 20 50 20 Q32 20 16 30 Z" fill="#5a3a22" stroke={OUTLINE} strokeWidth="5" strokeLinejoin="round" />
-      <rect x="20" y="24" width="60" height="12" rx="6" fill="#ffcc33" stroke={OUTLINE} strokeWidth="4" />
-      <circle cx="50" cy="30" r="6" fill="#e0262f" stroke={OUTLINE} strokeWidth="3" />
-      <ellipse cx="30" cy="64" rx="8" ry="6" fill={BLUSH} opacity="0.85" />
-      <ellipse cx="70" cy="64" rx="8" ry="6" fill={BLUSH} opacity="0.85" />
-      <circle cx="38" cy="50" r="5.5" fill={OUTLINE} />
-      <circle cx="62" cy="50" r="5.5" fill={OUTLINE} />
-      <circle cx="40.5" cy="47.5" r="1.7" fill="#fff" />
-      <circle cx="64.5" cy="47.5" r="1.7" fill="#fff" />
-      <path d="M42 70 q8 6 16 0" stroke={OUTLINE} strokeWidth="3" fill="none" strokeLinecap="round" />
+      {/* Side capes */}
+      <path d="M20 62 Q8 94 32 94 Q30 72 40 64 Z" fill="#be0f2f" stroke={OUTLINE} strokeWidth="5" strokeLinejoin="round" />
+      <path d="M80 62 Q92 94 68 94 Q70 72 60 64 Z" fill="#be0f2f" stroke={OUTLINE} strokeWidth="5" strokeLinejoin="round" />
+
+      {/* Head — crimson spider mask */}
+      <rect x="14" y="14" width="72" height="72" rx="24" fill="#c8102e" stroke={OUTLINE} strokeWidth="6" />
+
+      {/* Web pattern — dark red on red */}
+      <line x1="50" y1="14" x2="50" y2="86" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+      <path d="M14 38 Q50 30 86 38" fill="none" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+      <path d="M14 58 Q50 49 86 58" fill="none" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+      <path d="M18 74 Q50 66 82 74" fill="none" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+      <line x1="50" y1="14" x2="14" y2="55" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+      <line x1="50" y1="14" x2="86" y2="55" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+      <line x1="14" y1="55" x2="40" y2="86" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+      <line x1="86" y1="55" x2="60" y2="86" stroke="#8a0a20" strokeWidth="1.8" opacity="0.65" />
+
+      {/* Spider eyes — large angular ovals pointing inward */}
+      <ellipse cx="34" cy="44" rx="15" ry="9.5" fill="white" stroke={OUTLINE} strokeWidth="2.5" transform="rotate(-18 34 44)" />
+      <ellipse cx="66" cy="44" rx="15" ry="9.5" fill="white" stroke={OUTLINE} strokeWidth="2.5" transform="rotate(18 66 44)" />
+      <ellipse cx="33" cy="43" rx="9" ry="5.5" fill="#e0e0e0" transform="rotate(-18 33 43)" />
+      <ellipse cx="67" cy="43" rx="9" ry="5.5" fill="#e0e0e0" transform="rotate(18 67 43)" />
     </svg>
   );
 }
