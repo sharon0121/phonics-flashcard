@@ -27,6 +27,7 @@ interface SlingshotGameProps {
   onRename: (id: string, name: string) => void;
   lastPlayerName: string;
   animalEmoji?: string;
+  animalType?: AnimalType;
   projectileEmoji?: string;
   startLives?: number;
 }
@@ -49,8 +50,11 @@ const ROUND_TIME_MS = 12000;
 
 // Consecutive-correct-answer streak thresholds that unlock a flashier
 // projectile — resets to the plain ball on any wrong answer or timeout.
-const STREAK_TIER_SPIKY = 5;
-const STREAK_TIER_AXE = 10;
+const STREAK_TIER_SPIKY     = 5;
+const STREAK_TIER_AXE       = 10;
+const STREAK_TIER_BOMB      = 15;
+const STREAK_TIER_LIGHTNING = 20;
+const STREAK_TIER_STAR      = 25;
 
 function currentPowerValue(elapsedMs: number): number {
   const half = OSCILLATE_PERIOD_MS / 2;
@@ -175,79 +179,305 @@ const ANIMAL_WORLD_HEIGHT = 1.1 * 1.5; // world height at dScale=1.0
 
 // Creates a low-poly 3D giraffe centred at its feet (y=0 in local space).
 // The group is scaled to ANIMAL_WORLD_HEIGHT × dScale in buildLanes.
-function createGiraffe3D(): THREE.Group {
+function createCow3D(): THREE.Group {
   const grp = new THREE.Group();
-
-  const mk = (
-    geo: THREE.BufferGeometry,
-    mat: THREE.MeshStandardMaterial,
-    x: number, y: number, z: number,
-    rx = 0, ry = 0, rz = 0,
-  ) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.rotation.set(rx, ry, rz);
-    m.castShadow = true;
-    grp.add(m);
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.MeshStandardMaterial, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; grp.add(m);
   };
+  const bodyMat   = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.6 });
+  const spotMat   = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7 });
+  const hornMat   = new THREE.MeshStandardMaterial({ color: 0xEECC80, roughness: 0.5 });
+  const hoofMat   = new THREE.MeshStandardMaterial({ color: 0x2A1A08, roughness: 0.9 });
+  const udderMat  = new THREE.MeshStandardMaterial({ color: 0xFFB0C0, roughness: 0.5 });
+  const muzzleMat = new THREE.MeshStandardMaterial({ color: 0xFFDDCC, roughness: 0.6 });
+  const eyeMat    = new THREE.MeshStandardMaterial({ color: 0x110808, roughness: 0.9 });
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xFFCC00, roughness: 0.45, metalness: 0.05, emissive: 0xFFCC00, emissiveIntensity: 0.08 });
-  const spotMat = new THREE.MeshStandardMaterial({ color: 0xA0420A, roughness: 0.6  });
-  const eyeMat  = new THREE.MeshStandardMaterial({ color: 0x110808, roughness: 0.9  });
-  const hornMat = new THREE.MeshStandardMaterial({ color: 0xE8A020, roughness: 0.55 });
-  const hoofMat = new THREE.MeshStandardMaterial({ color: 0x3A2008, roughness: 0.9  });
-
-  // Hooves + Legs (4×)
-  const hoofGeo = new THREE.BoxGeometry(0.075, 0.035, 0.085);
-  const legGeo  = new THREE.BoxGeometry(0.065, 0.265, 0.065);
-  for (const [lx, lz] of [[-0.10, 0.09], [0.10, 0.09], [-0.10, -0.09], [0.10, -0.09]] as [number,number][]) {
-    mk(hoofGeo, hoofMat, lx, 0.017,  lz);
-    mk(legGeo,  bodyMat, lx, 0.168, lz);
+  // Legs + hooves
+  const legGeo  = new THREE.BoxGeometry(0.07, 0.22, 0.07);
+  const hoofGeo = new THREE.BoxGeometry(0.075, 0.04, 0.085);
+  for (const [lx, lz] of [[-0.12, 0.09], [0.12, 0.09], [-0.12, -0.09], [0.12, -0.09]] as [number, number][]) {
+    mk(legGeo,  bodyMat, lx, 0.13, lz);
+    mk(hoofGeo, hoofMat, lx, 0.02, lz);
   }
 
   // Body
-  mk(new THREE.BoxGeometry(0.34, 0.22, 0.26), bodyMat, 0, 0.40, 0);
-  // Body spots
-  mk(new THREE.BoxGeometry(0.10, 0.10, 0.27), spotMat, -0.09, 0.43,  0);
-  mk(new THREE.BoxGeometry(0.08, 0.08, 0.27), spotMat,  0.10, 0.37,  0);
-  mk(new THREE.BoxGeometry(0.07, 0.11, 0.27), spotMat, -0.03, 0.32,  0);
+  mk(new THREE.BoxGeometry(0.42, 0.26, 0.28), bodyMat, 0, 0.39, 0);
+  // Black patches
+  mk(new THREE.BoxGeometry(0.18, 0.18, 0.29), spotMat, -0.10, 0.42,  0);
+  mk(new THREE.BoxGeometry(0.14, 0.13, 0.29), spotMat,  0.12, 0.33,  0);
+  mk(new THREE.BoxGeometry(0.10, 0.10, 0.29), spotMat,  0.00, 0.48,  0);
 
-  // Neck (slightly tilted forward)
-  mk(new THREE.BoxGeometry(0.11, 0.36, 0.11), bodyMat, 0.04, 0.67, 0.01, 0, 0, -0.06);
-  // Neck spots
-  mk(new THREE.BoxGeometry(0.12, 0.12, 0.12), spotMat, 0.03, 0.59, 0.01);
-  mk(new THREE.BoxGeometry(0.11, 0.10, 0.11), spotMat, 0.05, 0.74, 0.01);
+  // Udder + teats
+  mk(new THREE.BoxGeometry(0.18, 0.07, 0.14), udderMat, 0, 0.245, 0.02);
+  const teatGeo = new THREE.CylinderGeometry(0.018, 0.014, 0.055, 6);
+  for (const [tx, tz] of [[-0.055, 0.06], [0.055, 0.06], [-0.055, -0.04], [0.055, -0.04]] as [number, number][])
+    mk(teatGeo, udderMat, tx, 0.195, tz);
 
-  // Head
-  mk(new THREE.BoxGeometry(0.17, 0.13, 0.14), bodyMat, 0.03, 0.87, 0.01);
+  // Neck + head
+  mk(new THREE.BoxGeometry(0.16, 0.16, 0.16), bodyMat, 0, 0.595, 0.10);
+  mk(new THREE.BoxGeometry(0.20, 0.17, 0.22), bodyMat, 0, 0.73, 0.16);
   // Muzzle
-  mk(new THREE.BoxGeometry(0.11, 0.09, 0.09), bodyMat, 0.03, 0.81, 0.10);
-  // Nostrils
-  mk(new THREE.BoxGeometry(0.025, 0.015, 0.02), spotMat, -0.01, 0.786, 0.154);
-  mk(new THREE.BoxGeometry(0.025, 0.015, 0.02), spotMat,  0.07, 0.786, 0.154);
+  mk(new THREE.BoxGeometry(0.14, 0.10, 0.09), muzzleMat, 0, 0.695, 0.265);
+  mk(new THREE.BoxGeometry(0.025, 0.02, 0.02), spotMat, -0.03, 0.688, 0.312);
+  mk(new THREE.BoxGeometry(0.025, 0.02, 0.02), spotMat,  0.03, 0.688, 0.312);
   // Eyes
-  const eyeGeo = new THREE.SphereGeometry(0.018, 8, 6);
-  mk(eyeGeo, eyeMat, -0.05 + 0.03, 0.88, 0.08);
-  mk(eyeGeo, eyeMat,  0.05 + 0.03, 0.88, 0.08);
+  mk(new THREE.SphereGeometry(0.022, 8, 6), eyeMat, -0.072, 0.755, 0.245);
+  mk(new THREE.SphereGeometry(0.022, 8, 6), eyeMat,  0.072, 0.755, 0.245);
   // Ears
-  mk(new THREE.BoxGeometry(0.04, 0.065, 0.025), bodyMat, -0.10 + 0.03, 0.92, 0.01);
-  mk(new THREE.BoxGeometry(0.04, 0.065, 0.025), bodyMat,  0.10 + 0.03, 0.92, 0.01);
-
-  // Ossicones (horns) — tip at y≈1.0
-  const hornGeo = new THREE.CylinderGeometry(0.010, 0.020, 0.075, 6);
-  mk(hornGeo, hornMat, -0.03 + 0.03, 0.975, 0.005);
-  mk(hornGeo, hornMat,  0.03 + 0.03, 0.975, 0.005);
-
-  // Tail
-  mk(new THREE.CylinderGeometry(0.015, 0.010, 0.13, 5), bodyMat, 0, 0.39, -0.155, 0.4, 0, 0);
+  mk(new THREE.BoxGeometry(0.05, 0.075, 0.03), bodyMat, -0.12, 0.765, 0.13);
+  mk(new THREE.BoxGeometry(0.05, 0.075, 0.03), bodyMat,  0.12, 0.765, 0.13);
+  // Horns (short, light yellow)
+  mk(new THREE.CylinderGeometry(0.012, 0.018, 0.07, 6), hornMat, -0.065, 0.835, 0.115, 0, 0,  0.3);
+  mk(new THREE.CylinderGeometry(0.012, 0.018, 0.07, 6), hornMat,  0.065, 0.835, 0.115, 0, 0, -0.3);
+  // Tail + dark tip
+  mk(new THREE.CylinderGeometry(0.014, 0.010, 0.13, 5), bodyMat, 0, 0.39, -0.155, 0.4, 0, 0);
+  mk(new THREE.SphereGeometry(0.022, 6, 5), spotMat, 0, 0.315, -0.205);
 
   return grp;
 }
-type ProjectileTier = 'ball' | 'spiky' | 'axe';
+
+function createPig3D(): THREE.Group {
+  const grp = new THREE.Group();
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.MeshStandardMaterial, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; grp.add(m);
+  };
+  const bodyMat   = new THREE.MeshStandardMaterial({ color: 0xFF9999, roughness: 0.55 });
+  const snoutMat  = new THREE.MeshStandardMaterial({ color: 0xFF8080, roughness: 0.5 });
+  const nostrilM  = new THREE.MeshStandardMaterial({ color: 0x441111, roughness: 0.9 });
+  const earMat    = new THREE.MeshStandardMaterial({ color: 0xFFAAAA, roughness: 0.55 });
+  const eyeMat    = new THREE.MeshStandardMaterial({ color: 0x110808, roughness: 0.9 });
+
+  // Legs (short, stubby)
+  const legGeo = new THREE.BoxGeometry(0.09, 0.14, 0.09);
+  for (const [lx, lz] of [[-0.13, 0.09], [0.13, 0.09], [-0.13, -0.09], [0.13, -0.09]] as [number, number][])
+    mk(legGeo, bodyMat, lx, 0.09, lz);
+
+  // Body (wide, chubby)
+  mk(new THREE.SphereGeometry(0.28, 12, 8), bodyMat, 0, 0.40, 0);
+
+  // Head (large, round)
+  mk(new THREE.SphereGeometry(0.22, 12, 8), bodyMat, 0, 0.72, 0.10);
+
+  // Snout (flat disc)
+  mk(new THREE.CylinderGeometry(0.10, 0.10, 0.045, 10), snoutMat, 0, 0.695, 0.295, Math.PI / 2, 0, 0);
+  // Nostrils
+  mk(new THREE.CylinderGeometry(0.022, 0.022, 0.05, 8), nostrilM, -0.038, 0.695, 0.322, Math.PI / 2, 0, 0);
+  mk(new THREE.CylinderGeometry(0.022, 0.022, 0.05, 8), nostrilM,  0.038, 0.695, 0.322, Math.PI / 2, 0, 0);
+
+  // Eyes
+  mk(new THREE.SphereGeometry(0.028, 8, 6), eyeMat, -0.08, 0.755, 0.275);
+  mk(new THREE.SphereGeometry(0.028, 8, 6), eyeMat,  0.08, 0.755, 0.275);
+
+  // Ears (triangular boxes, flopped forward)
+  mk(new THREE.BoxGeometry(0.065, 0.085, 0.04), earMat, -0.16, 0.835, 0.095,  0.4, 0,  0.3);
+  mk(new THREE.BoxGeometry(0.065, 0.085, 0.04), earMat,  0.16, 0.835, 0.095,  0.4, 0, -0.3);
+
+  // Curly tail (thin cylinder tilted)
+  mk(new THREE.CylinderGeometry(0.012, 0.012, 0.10, 5), bodyMat, 0, 0.41, -0.285, 0.5, 0, 0.4);
+
+  return grp;
+}
+
+function createSheep3D(): THREE.Group {
+  const grp = new THREE.Group();
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.MeshStandardMaterial, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; grp.add(m);
+  };
+  const woolMat = new THREE.MeshStandardMaterial({ color: 0xEEEEEE, roughness: 0.85 });
+  const faceMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
+  const hornMat = new THREE.MeshStandardMaterial({ color: 0xBBAA66, roughness: 0.55 });
+  const eyeMat  = new THREE.MeshStandardMaterial({ color: 0xEEEEEE, roughness: 0.9 });
+
+  // Legs (black)
+  const legGeo = new THREE.BoxGeometry(0.07, 0.20, 0.07);
+  for (const [lx, lz] of [[-0.12, 0.08], [0.12, 0.08], [-0.12, -0.08], [0.12, -0.08]] as [number, number][])
+    mk(legGeo, faceMat, lx, 0.12, lz);
+
+  // Fluffy wool body — cluster of overlapping spheres
+  mk(new THREE.SphereGeometry(0.24, 10, 7), woolMat,  0.00, 0.42,  0.00);
+  mk(new THREE.SphereGeometry(0.19, 10, 7), woolMat, -0.15, 0.40,  0.05);
+  mk(new THREE.SphereGeometry(0.19, 10, 7), woolMat,  0.15, 0.40,  0.05);
+  mk(new THREE.SphereGeometry(0.17, 10, 7), woolMat,  0.00, 0.44, -0.14);
+  mk(new THREE.SphereGeometry(0.16, 10, 7), woolMat,  0.00, 0.52,  0.12);
+  mk(new THREE.SphereGeometry(0.14, 10, 7), woolMat, -0.13, 0.50, -0.10);
+
+  // Head (black face)
+  mk(new THREE.BoxGeometry(0.17, 0.17, 0.19), faceMat, 0, 0.73, 0.17);
+  // Wool on head
+  mk(new THREE.SphereGeometry(0.11, 10, 7), woolMat, 0, 0.80, 0.09);
+  // Eyes (white dots on dark face)
+  mk(new THREE.SphereGeometry(0.022, 8, 6), eyeMat, -0.055, 0.745, 0.265);
+  mk(new THREE.SphereGeometry(0.022, 8, 6), eyeMat,  0.055, 0.745, 0.265);
+
+  // Curved horns — short cylinders angled outward
+  mk(new THREE.CylinderGeometry(0.014, 0.020, 0.09, 6), hornMat, -0.10, 0.835, 0.10, 0, 0,  0.7);
+  mk(new THREE.CylinderGeometry(0.014, 0.020, 0.09, 6), hornMat,  0.10, 0.835, 0.10, 0, 0, -0.7);
+
+  // Short tail
+  mk(new THREE.SphereGeometry(0.055, 8, 6), woolMat, 0, 0.43, -0.255);
+
+  return grp;
+}
+
+function createHorse3D(): THREE.Group {
+  const grp = new THREE.Group();
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.MeshStandardMaterial, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; grp.add(m);
+  };
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.6 });
+  const maneMat = new THREE.MeshStandardMaterial({ color: 0x3A1A05, roughness: 0.7 });
+  const hoofMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+  const eyeMat  = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.9 });
+
+  // Long thin legs + hooves
+  const legGeo  = new THREE.BoxGeometry(0.065, 0.32, 0.065);
+  const hoofGeo = new THREE.BoxGeometry(0.075, 0.045, 0.085);
+  for (const [lx, lz] of [[-0.11, 0.09], [0.11, 0.09], [-0.11, -0.09], [0.11, -0.09]] as [number, number][]) {
+    mk(legGeo,  bodyMat, lx, 0.22, lz);
+    mk(hoofGeo, hoofMat, lx, 0.023, lz);
+  }
+
+  // Body
+  mk(new THREE.BoxGeometry(0.38, 0.24, 0.28), bodyMat, 0, 0.52, 0);
+
+  // Neck (tilted forward)
+  mk(new THREE.BoxGeometry(0.13, 0.30, 0.13), bodyMat, 0.04, 0.73, 0.12, 0, 0, -0.22);
+
+  // Long head + muzzle
+  mk(new THREE.BoxGeometry(0.14, 0.20, 0.14), bodyMat, 0.06, 0.88, 0.21);
+  mk(new THREE.BoxGeometry(0.10, 0.12, 0.10), bodyMat, 0.06, 0.80, 0.31);
+
+  // Eyes
+  mk(new THREE.SphereGeometry(0.020, 8, 6), eyeMat, -0.05 + 0.06, 0.905, 0.27);
+  mk(new THREE.SphereGeometry(0.020, 8, 6), eyeMat,  0.05 + 0.06, 0.905, 0.27);
+
+  // Mane: alternating-height boxes along top of neck
+  const manePositions: [number, number, number, number][] = [
+    [0.01, 0.840, 0.155, 0.10],
+    [0.03, 0.800, 0.175, 0.07],
+    [0.02, 0.770, 0.150, 0.09],
+    [0.04, 0.740, 0.135, 0.07],
+    [0.03, 0.715, 0.115, 0.085],
+  ];
+  for (const [mx, my, mz, mh] of manePositions)
+    mk(new THREE.BoxGeometry(0.04, mh, 0.05), maneMat, mx, my, mz);
+
+  // Tail: bundle of thin cylinders fanned
+  const tailGeo = new THREE.CylinderGeometry(0.012, 0.008, 0.20, 5);
+  mk(tailGeo, maneMat, 0,      0.50, -0.165,  0.5,  0,  0);
+  mk(tailGeo, maneMat, -0.025, 0.50, -0.165,  0.45, 0,  0.15);
+  mk(tailGeo, maneMat,  0.025, 0.50, -0.165,  0.45, 0, -0.15);
+
+  return grp;
+}
+
+function createElephant3D(): THREE.Group {
+  const grp = new THREE.Group();
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.MeshStandardMaterial, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; grp.add(m);
+  };
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.65 });
+  const tuskMat = new THREE.MeshStandardMaterial({ color: 0xFFFAE0, roughness: 0.4 });
+  const eyeMat  = new THREE.MeshStandardMaterial({ color: 0x110808, roughness: 0.9 });
+
+  // 4 thick columnar legs
+  const legGeo = new THREE.CylinderGeometry(0.075, 0.082, 0.28, 8);
+  for (const [lx, lz] of [[-0.14, 0.09], [0.14, 0.09], [-0.14, -0.09], [0.14, -0.09]] as [number, number][])
+    mk(legGeo, bodyMat, lx, 0.165, lz);
+
+  // Body (large, high center)
+  mk(new THREE.BoxGeometry(0.44, 0.32, 0.32), bodyMat, 0, 0.47, 0);
+
+  // Head
+  mk(new THREE.BoxGeometry(0.32, 0.28, 0.28), bodyMat, 0, 0.75, 0.12);
+
+  // Big flat ears on sides
+  mk(new THREE.BoxGeometry(0.06, 0.22, 0.28), bodyMat, -0.215, 0.74,  0.06);
+  mk(new THREE.BoxGeometry(0.06, 0.22, 0.28), bodyMat,  0.215, 0.74,  0.06);
+
+  // Trunk: 3 cylinders curving downward
+  mk(new THREE.CylinderGeometry(0.055, 0.062, 0.16, 8), bodyMat, 0, 0.695, 0.270, 0.25, 0, 0);
+  mk(new THREE.CylinderGeometry(0.048, 0.055, 0.14, 8), bodyMat, 0, 0.580, 0.340, 0.55, 0, 0);
+  mk(new THREE.CylinderGeometry(0.040, 0.048, 0.12, 8), bodyMat, 0, 0.465, 0.375, 0.85, 0, 0);
+
+  // Tusks
+  mk(new THREE.CylinderGeometry(0.018, 0.012, 0.13, 6), tuskMat, -0.065, 0.665, 0.280,  0.1, 0,  0.2);
+  mk(new THREE.CylinderGeometry(0.018, 0.012, 0.13, 6), tuskMat,  0.065, 0.665, 0.280,  0.1, 0, -0.2);
+
+  // Eyes
+  mk(new THREE.SphereGeometry(0.024, 8, 6), eyeMat, -0.105, 0.795, 0.255);
+  mk(new THREE.SphereGeometry(0.024, 8, 6), eyeMat,  0.105, 0.795, 0.255);
+
+  // Small tail
+  mk(new THREE.CylinderGeometry(0.014, 0.010, 0.11, 5), bodyMat, 0, 0.46, -0.175, 0.4, 0, 0);
+
+  return grp;
+}
+
+function createBear3D(): THREE.Group {
+  const grp = new THREE.Group();
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.MeshStandardMaterial, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; grp.add(m);
+  };
+  const bodyMat   = new THREE.MeshStandardMaterial({ color: 0x5C3317, roughness: 0.7 });
+  const muzzleMat = new THREE.MeshStandardMaterial({ color: 0xC8A060, roughness: 0.6 });
+  const eyeMat    = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.9 });
+
+  // Short thick legs
+  const legGeo = new THREE.CylinderGeometry(0.065, 0.072, 0.18, 8);
+  for (const [lx, lz] of [[-0.13, 0.08], [0.13, 0.08], [-0.13, -0.08], [0.13, -0.08]] as [number, number][])
+    mk(legGeo, bodyMat, lx, 0.11, lz);
+
+  // Body (round, squarish)
+  mk(new THREE.SphereGeometry(0.26, 12, 9), bodyMat, 0, 0.43, 0);
+
+  // Round head
+  mk(new THREE.SphereGeometry(0.20, 12, 9), bodyMat, 0, 0.71, 0.10);
+
+  // Round ears (half-spheres on top of head)
+  mk(new THREE.SphereGeometry(0.075, 8, 6), bodyMat, -0.14, 0.875, 0.065);
+  mk(new THREE.SphereGeometry(0.075, 8, 6), bodyMat,  0.14, 0.875, 0.065);
+  // Ear inner (slightly smaller, lighter)
+  mk(new THREE.SphereGeometry(0.045, 8, 6), muzzleMat, -0.14, 0.885, 0.095);
+  mk(new THREE.SphereGeometry(0.045, 8, 6), muzzleMat,  0.14, 0.885, 0.095);
+
+  // Muzzle
+  mk(new THREE.SphereGeometry(0.085, 10, 7), muzzleMat, 0, 0.675, 0.265);
+
+  // Nose
+  mk(new THREE.SphereGeometry(0.030, 8, 6), eyeMat, 0, 0.710, 0.330);
+
+  // Eyes
+  mk(new THREE.SphereGeometry(0.022, 8, 6), eyeMat, -0.075, 0.745, 0.275);
+  mk(new THREE.SphereGeometry(0.022, 8, 6), eyeMat,  0.075, 0.745, 0.275);
+
+  // Tiny tail
+  mk(new THREE.SphereGeometry(0.042, 7, 5), bodyMat, 0, 0.435, -0.265);
+
+  return grp;
+}
+
+export type AnimalType = 'cow' | 'pig' | 'sheep' | 'horse' | 'elephant' | 'bear';
+
+function createAnimal3D(type: AnimalType): THREE.Group {
+  switch (type) {
+    case 'pig':      return createPig3D();
+    case 'sheep':    return createSheep3D();
+    case 'horse':    return createHorse3D();
+    case 'elephant': return createElephant3D();
+    case 'bear':     return createBear3D();
+    default:         return createCow3D();
+  }
+}
+
+type ProjectileTier = 'ball' | 'spiky' | 'axe' | 'bomb' | 'lightning' | 'star';
 
 function projectileTierForStreak(streak: number): ProjectileTier {
-  if (streak >= STREAK_TIER_AXE) return 'axe';
-  if (streak >= STREAK_TIER_SPIKY) return 'spiky';
+  if (streak >= STREAK_TIER_STAR)      return 'star';
+  if (streak >= STREAK_TIER_LIGHTNING) return 'lightning';
+  if (streak >= STREAK_TIER_BOMB)      return 'bomb';
+  if (streak >= STREAK_TIER_AXE)       return 'axe';
+  if (streak >= STREAK_TIER_SPIKY)     return 'spiky';
   return 'ball';
 }
 
@@ -306,6 +536,68 @@ function createProjectileVisual(tier: ProjectileTier): THREE.Group {
       spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
       group.add(spike);
     }
+    return group;
+  }
+
+  if (tier === 'bomb') {
+    // Black sphere core
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 20, 14),
+      new THREE.MeshStandardMaterial({ color: 0x1A1A1A, metalness: 0.3, roughness: 0.5 }),
+    );
+    group.add(core);
+    // Golden fuse — thin cylinder tilted slightly, sticking up from top
+    const fuse = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.015, 0.20, 6),
+      new THREE.MeshStandardMaterial({ color: 0xD4A800, roughness: 0.6 }),
+    );
+    fuse.position.set(0.04, 0.28, 0);
+    fuse.rotation.set(0, 0, 0.25);
+    group.add(fuse);
+    // Spark at fuse tip
+    const spark = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xFFFF00, emissive: 0xFFFF00, emissiveIntensity: 1.5, roughness: 0.1 }),
+    );
+    spark.position.set(0.09, 0.375, 0);
+    group.add(spark);
+    return group;
+  }
+
+  if (tier === 'lightning') {
+    const segMat = new THREE.MeshStandardMaterial({ color: 0xAADDFF, emissive: 0x4488FF, emissiveIntensity: 1.8, metalness: 0.0, roughness: 0.1 });
+    const glowMat = new THREE.MeshStandardMaterial({ color: 0x88BBFF, emissive: 0x2255CC, emissiveIntensity: 0.8, transparent: true, opacity: 0.35, roughness: 0.2 });
+    // 3 zigzag segments
+    const offsets: [number, number, number, number][] = [
+      [ 0.00,  0.17, 0,  0.26],
+      [-0.04, -0.01, 0, -0.26],
+      [ 0.04, -0.19, 0,  0.26],
+    ];
+    for (const [ox, oy, oz, rz] of offsets) {
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.06), segMat);
+      seg.position.set(ox, oy, oz);
+      seg.rotation.set(0, 0, rz);
+      group.add(seg);
+      // Outer glow
+      const glow = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.32, 0.11), glowMat);
+      glow.position.set(ox, oy, oz);
+      glow.rotation.set(0, 0, rz);
+      group.add(glow);
+    }
+    return group;
+  }
+
+  if (tier === 'star') {
+    const starMat = new THREE.MeshStandardMaterial({ color: 0xFFEE22, emissive: 0xFFAA00, emissiveIntensity: 1.2, metalness: 0.4, roughness: 0.1 });
+    // 3 thin boxes at 0°, 60°, 120°
+    for (const rz of [0, Math.PI / 3, (2 * Math.PI) / 3]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.44, 0.08), starMat);
+      arm.rotation.set(0, 0, rz);
+      group.add(arm);
+    }
+    // Center cap
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.10, 10, 7), starMat);
+    group.add(cap);
     return group;
   }
 
@@ -398,6 +690,7 @@ export default function SlingshotGame({
   onSave,
   onRename,
   lastPlayerName,
+  animalType = 'cow',
   startLives = 5,
 }: SlingshotGameProps) {
   const [clouds] = useState(() => generateClouds());
@@ -433,6 +726,9 @@ export default function SlingshotGame({
   const clickClientRef = useRef<{ x: number; y: number } | null>(null);
   // Procedural crate texture (created once, shared across all crate meshes).
   const crateBoxTextureRef = useRef<THREE.CanvasTexture | null>(null);
+  // Stable ref for animalType so buildLanes (useCallback) can read it without
+  // being added to its dependency array (the prop is not expected to change).
+  const animalTypeRef = useRef<AnimalType>(animalType);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -622,8 +918,8 @@ export default function SlingshotGame({
       crateMesh.position.set(x, CRATE_SIZE * 1.5, z);
       scene.add(crateMesh);
 
-      // --- 3D Giraffe (procedural Group, local y=0 = feet, y=1.0 = top) ---
-      const targetMesh = createGiraffe3D();
+      // --- 3D Animal (procedural Group, local y=0 = feet, y=1.0 = top) ---
+      const targetMesh = createAnimal3D(animalTypeRef.current);
       targetMesh.scale.setScalar(ANIMAL_WORLD_HEIGHT * dScale);
       targetMesh.position.set(x, CRATE_VISUAL_TOP_Y, z);
       scene.add(targetMesh);
@@ -969,15 +1265,26 @@ export default function SlingshotGame({
     } else if (next === STREAK_TIER_AXE) {
       setTierUpBanner({ text: '🪓 斧頭解鎖！', key: performance.now() });
       playCelebrationChime();
+    } else if (next === STREAK_TIER_BOMB) {
+      setTierUpBanner({ text: '💣 炸彈解鎖！', key: performance.now() });
+      playCelebrationChime();
+    } else if (next === STREAK_TIER_LIGHTNING) {
+      setTierUpBanner({ text: '⚡ 閃電解鎖！', key: performance.now() });
+      playCelebrationChime();
+    } else if (next === STREAK_TIER_STAR) {
+      setTierUpBanner({ text: '⭐ 星星解鎖！', key: performance.now() });
+      playCelebrationChime();
     }
   }
 
   function resetStreak() {
     const cur = streakRef.current;
-    // Drop one tier instead of resetting to zero:
-    // axe (≥10) → spiky start (5), spiky (≥5) → 0, normal → 0
-    const next = cur >= STREAK_TIER_AXE ? STREAK_TIER_SPIKY
-      : cur >= STREAK_TIER_SPIKY ? 0
+    // Drop one tier instead of resetting to zero
+    const next = cur >= STREAK_TIER_STAR      ? STREAK_TIER_LIGHTNING
+      : cur >= STREAK_TIER_LIGHTNING ? STREAK_TIER_BOMB
+      : cur >= STREAK_TIER_BOMB      ? STREAK_TIER_AXE
+      : cur >= STREAK_TIER_AXE       ? STREAK_TIER_SPIKY
+      : cur >= STREAK_TIER_SPIKY     ? 0
       : 0;
     streakRef.current = next;
     setStreak(next);
