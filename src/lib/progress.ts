@@ -120,3 +120,34 @@ export function clearReinforcementFresh(wordId: string): void {
     [wordId]: { ...existing, needsReinforcement: false },
   });
 }
+
+export function markWordsAsPrinted(wordIds: string[]): void {
+  if (typeof window === 'undefined' || wordIds.length === 0) return;
+  const fresh = loadProgress();
+  const now = Date.now();
+  const updated = { ...fresh };
+  for (const id of wordIds) {
+    updated[id] = {
+      canPronounce: fresh[id]?.canPronounce ?? false,
+      canUnderstand: fresh[id]?.canUnderstand ?? false,
+      learnedDate: fresh[id]?.learnedDate ?? new Date().toISOString().slice(0, 10),
+      ...(fresh[id]?.needsReinforcement !== undefined && { needsReinforcement: fresh[id].needsReinforcement }),
+      lastPrinted: now,
+    };
+  }
+  saveProgress(updated);
+}
+
+export function clearWordsPrinted(wordIds: string[]): void {
+  if (typeof window === 'undefined' || wordIds.length === 0) return;
+  const fresh = loadProgress();
+  const updated = { ...fresh };
+  for (const id of wordIds) {
+    if (updated[id]?.lastPrinted) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { lastPrinted: _, ...rest } = updated[id];
+      updated[id] = rest;
+    }
+  }
+  saveProgress(updated);
+}

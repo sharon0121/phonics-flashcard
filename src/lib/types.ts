@@ -21,6 +21,7 @@ export interface ProgressEntry {
   canUnderstand: boolean;
   learnedDate: string;
   needsReinforcement?: boolean;
+  lastPrinted?: number; // Unix timestamp (ms)
 }
 
 export type ProgressMap = Record<string, ProgressEntry>;
