@@ -1,5 +1,28 @@
 # 部署紀錄
 
+## 2026-08-07 — cfd1ff0
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **豬探長 UI 大改版**：
+  - 移除維恩圖圓圈內的「外觀感覺/在哪裡/用途」標籤
+  - 豬探長＆牧探長移出維恩圖，放大為 96px 頭像（h-24/w-24）在維恩圖上方
+  - 維恩圖背景：天藍→紫紅漸層，圓圈 fillOpacity 0.45（更清爽活潑）
+  - 提示詞框框：全透明背景，白字加陰影，確保文字在圓圈內
+  - Sprite 圖片：用 sharp 腳本去除白色背景（透明 PNG）、尺寸更新為 1254×1254
+- **新玩法規則**：
+  - 點維恩圖中央「?」才顯示作答欄位（字母拼盤預設隱藏）
+  - 求助豬探長：給英文類別提示（It is an animal / food / vehicle…），限 5 次
+  - 求助牧探長：唸出答案單字讓小朋友聽音拼字，限 5 次；次數用完變灰不可點
+  - 兩個求助按鈕顯示剩餘次數（session-wide，換題不重置）
+- **線索單字查詢**：線索句中符合單字庫的單字以金色底線標示，點擊查意思（音標＋中文＋英文解釋＋發音鍵）
+- **豬探長類別提示邏輯**：`detectiveVennClues.ts` 新增 `getCategoryHint()`，涵蓋 animal/food/home/school/vehicle/nature/body/clothing/place/object 10 種類別
+- **遊戲列表排序**：豬探長與牧探長移至「動物華容道」後面
+
+---
+
 ## 2026-08-06 — 70f63f7
 
 **網址**：https://phonics-flashcard.vercel.app
