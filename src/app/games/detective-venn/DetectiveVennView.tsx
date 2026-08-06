@@ -13,6 +13,7 @@ import {
 } from '@/lib/heroClimbSettings';
 import { useCustomWords } from '@/lib/customWords';
 import { useDetectiveWordSources } from '@/lib/detectiveVennSettings';
+import { hasClues, getClueTriple } from '@/lib/detectiveVennClues';
 
 type Mood = 'happy' | 'sad' | null;
 
@@ -21,33 +22,15 @@ interface Tile {
   letter: string;
 }
 
-const CLUE_COLORS = ['#ef4444', '#3b82f6', '#eab308'];
+// Circle A = red, Circle B = blue, Circle C = yellow
+const CLUE_COLORS  = ['#ef4444', '#3b82f6', '#eab308'] as const;
+const CLUE_LABELS  = ['A · 外觀感覺', 'B · 在哪裡', 'C · 用途'] as const;
+const CLUE_KEYS    = ['A', 'B', 'C'] as const;
 
-const DEFAULT_PIG_TEXT = '嗨！一起找出秘密單字吧！';
+const DEFAULT_PIG_TEXT   = '嗨！一起找出秘密單字吧！';
 const DEFAULT_SHEEP_TEXT = '需要發音時叫我！';
 
-const CATEGORY_CLUE: Record<string, string> = {
-  animal: 'I am an animal.',
-  action: 'I am an action word — something you do.',
-  adjective: 'I describe what something is like.',
-  noun: 'I am a thing you can see or use.',
-  custom: 'I am one of your own custom words!',
-};
-
 const WORD_LENGTH_RE = /^[A-Za-z]{3,8}$/;
-
-// Very common function words are excluded from the click-for-meaning lookup
-// even when they exist in the sight-word bank — a kid doesn't need to look
-// up "the" or "have"; the feature is for less-common vocabulary in a clue.
-const CLUE_STOPWORDS = new Set([
-  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'am', 'be', 'been', 'being',
-  'have', 'has', 'had', 'do', 'does', 'did', 'can', 'will', 'would', 'could',
-  'should', 'may', 'might', 'must', 'for', 'and', 'but', 'not', 'you', 'your',
-  'his', 'her', 'its', 'our', 'their', 'this', 'that', 'these', 'those',
-  'with', 'from', 'about', 'into', 'than', 'then', 'when', 'what', 'who',
-  'how', 'why', 'all', 'many', 'some', 'often', 'usually', 'sometimes',
-  'listen', 'sound', 'name', 'letters', 'inside', 'often',
-]);
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -64,58 +47,11 @@ function makeTiles(word: string): Tile[] {
 
 function speak(text: string, lang: string) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  // Create the utterance before cancel() so it stays within the user-gesture event.
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = lang;
   utterance.rate = 0.92;
   window.speechSynthesis.cancel();
-  // iOS Safari needs a small delay after cancel() before speak() actually works.
   setTimeout(() => window.speechSynthesis.speak(utterance), 50);
-}
-
-function isEnglishText(text: string) {
-  return /^[A-Za-z0-9\s.,!?'"]+$/.test(text.trim());
-}
-
-function formatSentenceCase(s: string): string {
-  const trimmed = s.trim();
-  if (!trimmed) return trimmed;
-  const capped = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  return /[.!?]$/.test(capped) ? capped : `${capped}.`;
-}
-
-// Blanks out the target word inside its example sentence so it can be used as
-// a clue without giving the answer away. Returns null if the word can't be
-// safely located (e.g. an irregular inflection the prefix match doesn't
-// catch) so the caller can fall back to a category-based clue instead.
-function maskSentence(sentence: string, word: string): string | null {
-  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const exact = new RegExp(`\\b${escaped}\\b`, 'i');
-  if (exact.test(sentence)) return sentence.replace(exact, '____');
-  const prefix = new RegExp(`\\b${escaped}\\w*\\b`, 'i');
-  if (prefix.test(sentence)) return sentence.replace(prefix, '____');
-  return null;
-}
-
-function highlightClue(highlight: string): string {
-  if (!highlight) return '';
-  if (highlight.includes('_')) {
-    const letter = highlight.replace('_', '');
-    return `I have the "magic e" pattern with '${letter}' in my name!`;
-  }
-  return `Listen for the "${highlight}" sound in my name!`;
-}
-
-function buildClues(word: Word): [string, string, string] {
-  const clue1 = formatSentenceCase(word.en);
-  const masked = maskSentence(word.sentence, word.word);
-  const clue2 = masked ?? formatSentenceCase(CATEGORY_CLUE[word.category] ?? 'I am a word for you to discover.');
-  const clue3 = formatSentenceCase(highlightClue(word.highlight) || `I have ${word.word.length} letters in my name.`);
-  return [clue1, clue2, clue3];
-}
-
-function splitTokens(text: string): string[] {
-  return text.match(/[A-Za-z]+|[^A-Za-z]+/g) ?? [text];
 }
 
 function pickNextWord(pool: Word[], usedIds: Set<string>, excludeId?: string): Word {
@@ -129,33 +65,29 @@ function pickNextWord(pool: Word[], usedIds: Set<string>, excludeId?: string): W
 }
 
 export default function DetectiveVennView() {
-  const sources = useDetectiveWordSources();
-  const thisWeek = useThisWeekClimbWords();
+  const sources      = useDetectiveWordSources();
+  const thisWeek     = useThisWeekClimbWords();
   const reinforcement = useReinforcementClimbWords();
-  const phonics = usePhonicsClimbWords();
-  const sightWords = useSightWordsClimb();
-  const custom = useCustomWords();
+  const phonics      = usePhonicsClimbWords();
+  const sightWords   = useSightWordsClimb();
+  const custom       = useCustomWords();
 
-  const vocabLookup = useMemo(() => {
-    const map = new Map<string, Word>();
-    for (const w of [...phonics, ...sightWords, ...thisWeek, ...reinforcement, ...custom]) {
-      if (!map.has(w.word.toLowerCase())) map.set(w.word.toLowerCase(), w);
-    }
-    return map;
-  }, [phonics, sightWords, thisWeek, reinforcement, custom]);
-
+  // Only concrete nouns with curated clue data are eligible.
   const activeWords = useMemo(() => {
     const tierMap: Record<WordSourceKey, Word[]> = { thisWeek, reinforcement, custom, phonics, sightWords };
     const combined = sources.flatMap((key) => tierMap[key] ?? []);
     const seen = new Set<string>();
     const deduped = combined.filter((w) => {
       if (!WORD_LENGTH_RE.test(w.word)) return false;
+      if (w.category !== 'animal' && w.category !== 'noun') return false;
+      if (!hasClues(w.word)) return false;
       if (seen.has(w.id)) return false;
       seen.add(w.id);
       return true;
     });
     if (deduped.length > 0) return deduped;
-    return phonics.filter((w) => WORD_LENGTH_RE.test(w.word));
+    // Fallback: phonics concrete nouns with clues
+    return phonics.filter((w) => WORD_LENGTH_RE.test(w.word) && hasClues(w.word));
   }, [sources, thisWeek, reinforcement, custom, phonics, sightWords]);
 
   const [currentWord, setCurrentWord] = useState<Word>(() => pickNextWord(activeWords, new Set()));
@@ -169,9 +101,10 @@ export default function DetectiveVennView() {
   const [sheepText, setSheepText] = useState(DEFAULT_SHEEP_TEXT);
   const [feedback, setFeedback] = useState<'idle' | 'wrong'>('idle');
   const [showNext, setShowNext] = useState(false);
-  const [vocabPopup, setVocabPopup] = useState<Word | null>(null);
 
-  const clues = useMemo(() => buildClues(currentWord), [currentWord]);
+  const clueTriple = useMemo(() => getClueTriple(currentWord.word), [currentWord]);
+  // Array ordered [A, B, C] for the three circles
+  const clues = [clueTriple.A, clueTriple.B, clueTriple.C] as const;
 
   function loadQuestion() {
     const next = pickNextWord(activeWords, usedIdsRef.current, currentWord.id);
@@ -184,7 +117,6 @@ export default function DetectiveVennView() {
     setPigText(DEFAULT_PIG_TEXT);
     setSheepText(DEFAULT_SHEEP_TEXT);
     setShowNext(false);
-    setVocabPopup(null);
     setQuestionCount((c) => c + 1);
   }
 
@@ -223,7 +155,7 @@ export default function DetectiveVennView() {
     if (isCorrect) {
       setMood('happy');
       setPigText('太棒了！成功找到答案！');
-      setSheepText(`Great job! It's ${currentWord.word.toUpperCase()} (${currentWord.zh})!`);
+      setSheepText(`Great job! It's ${currentWord.word.toUpperCase()} — ${currentWord.zh}!`);
       speak('太棒了！成功找到答案！', 'zh-TW');
       setSolvedCount((c) => c + 1);
       setShowNext(true);
@@ -241,35 +173,6 @@ export default function DetectiveVennView() {
     }, 700);
   }
 
-  function bubbleSpeak(text: string) {
-    speak(text, isEnglishText(text) ? 'en-US' : 'zh-TW');
-  }
-
-  function handleVocabClick(w: Word, e: React.MouseEvent) {
-    e.stopPropagation();
-    speak(w.word, 'en-US');
-    setVocabPopup(w);
-  }
-
-  function renderClueTokens(clue: string) {
-    return splitTokens(clue).map((tok, i) => {
-      const lower = tok.toLowerCase();
-      const match = tok.length >= 3 && !CLUE_STOPWORDS.has(lower) ? vocabLookup.get(lower) : undefined;
-      if (match && match.word.toLowerCase() !== currentWord.word.toLowerCase()) {
-        return (
-          <span
-            key={i}
-            onClick={(e) => handleVocabClick(match, e)}
-            className="cursor-pointer underline decoration-dotted decoration-2 underline-offset-2 hover:text-indigo-700"
-          >
-            {tok}
-          </span>
-        );
-      }
-      return <span key={i}>{tok}</span>;
-    });
-  }
-
   const avatarMoodClass = mood === 'happy' ? 'cell-pop border-emerald-400' : mood === 'sad' ? 'cell-shake' : '';
   const avatarBaseClass =
     'flex h-9 w-9 items-center justify-center rounded-full border-2 border-[var(--hero-gold)] bg-gradient-to-b from-amber-100 to-amber-200 text-lg shadow transition-shadow sm:h-11 sm:w-11 sm:text-xl';
@@ -277,21 +180,32 @@ export default function DetectiveVennView() {
     'absolute top-10 w-28 rounded-md bg-zinc-900/90 px-1.5 py-1 text-[0.58rem] leading-tight text-white shadow sm:top-12 sm:w-32 sm:text-[0.65rem]';
   const panelClass = 'rounded-2xl border-2 border-[var(--hero-gold)] bg-white/95 shadow-md';
 
+  // SVG geometry — three overlapping circles forming a Venn diagram
+  const circles = [
+    { cx: 110, cy: 110 },
+    { cx: 210, cy: 110 },
+    { cx: 160, cy: 190 },
+  ] as const;
+  const labelBoxes = [
+    { x: 8,   y: 48,  width: 132, height: 88 },
+    { x: 180, y: 48,  width: 132, height: 88 },
+    { x: 94,  y: 220, width: 132, height: 88 },
+  ] as const;
+  // Center x of each label box for the type badge
+  const labelCenterX = [74, 246, 160] as const;
+
   return (
     <main className="relative mx-auto w-full max-w-3xl flex-1 px-4 py-2 sm:py-8">
       <HeroMascot src="/heroes/cutout-game.png" alt="" />
       <div className="relative z-10">
+        {/* ── Header ── */}
         <div className="flex items-center justify-between">
           <Link
             href="/games"
             className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-bold text-white hover:bg-white/20"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-              <path
-                fillRule="evenodd"
-                d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-                clipRule="evenodd"
-              />
+              <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
             </svg>
             Back
           </Link>
@@ -314,12 +228,13 @@ export default function DetectiveVennView() {
           </p>
         </div>
 
-        {/* 維恩圖線索區：畫面中最大的區塊 */}
+        {/* ── Venn diagram ── */}
         <div className={`relative mt-3 flex items-center justify-center p-3 sm:p-5 ${panelClass}`}>
+          {/* Pig detective (top-left) */}
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4">
             <button
               type="button"
-              onClick={() => bubbleSpeak(pigText)}
+              onClick={() => speak(pigText, 'zh-TW')}
               className={`${avatarBaseClass} ${avatarMoodClass}`}
               aria-label="豬探長"
             >
@@ -327,10 +242,12 @@ export default function DetectiveVennView() {
             </button>
             <span className={tooltipClass}>{pigText}</span>
           </div>
+
+          {/* Sheep detective (top-right) */}
           <div className="absolute top-3 right-3 sm:top-4 sm:right-4">
             <button
               type="button"
-              onClick={() => bubbleSpeak(sheepText)}
+              onClick={() => speak(sheepText, sheepText.startsWith('Listen') ? 'en-US' : 'zh-TW')}
               className={`${avatarBaseClass} ${avatarMoodClass}`}
               aria-label="牧探長"
             >
@@ -339,86 +256,83 @@ export default function DetectiveVennView() {
             <span className={`${tooltipClass} right-0 text-right`}>{sheepText}</span>
           </div>
 
-          <svg viewBox="0 0 320 300" className="mx-auto w-full max-w-[420px] sm:max-w-[480px] md:max-w-[560px]">
+          <svg viewBox="0 0 320 316" className="mx-auto w-full max-w-[420px] sm:max-w-[480px] md:max-w-[560px]">
             {clues.map((clue, i) => {
-              const circle = [
-                { cx: 110, cy: 110 },
-                { cx: 210, cy: 110 },
-                { cx: 160, cy: 190 },
-              ][i];
-              const labelBox = [
-                { x: 8, y: 48, width: 132, height: 82 },
-                { x: 180, y: 48, width: 132, height: 82 },
-                { x: 94, y: 216, width: 132, height: 82 },
-              ][i];
+              const color = CLUE_COLORS[i];
+              const circle = circles[i];
+              const box = labelBoxes[i];
+              const cx = labelCenterX[i];
               return (
                 <g
                   key={i}
                   className="cursor-pointer"
-                  onClick={() => speak(clue.replace(/____/g, currentWord.word), 'en-US')}
+                  onClick={() => speak(clue, 'en-US')}
                   role="button"
                   aria-label={`朗讀線索：${clue}`}
                 >
-                  <circle cx={circle.cx} cy={circle.cy} r={100} fill={CLUE_COLORS[i]} fillOpacity="0.72" style={{ mixBlendMode: 'multiply' }} />
-                  <foreignObject x={labelBox.x} y={labelBox.y} width={labelBox.width} height={labelBox.height}>
-                    <div className="flex h-full w-full items-center justify-center rounded-lg bg-white/10 p-1.5">
+                  {/* Coloured circle */}
+                  <circle
+                    cx={circle.cx}
+                    cy={circle.cy}
+                    r={100}
+                    fill={color}
+                    fillOpacity="0.72"
+                    style={{ mixBlendMode: 'multiply' }}
+                  />
+
+                  {/* Clue type badge */}
+                  <text
+                    x={cx}
+                    y={box.y - 6}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fontWeight="800"
+                    fill={color}
+                    opacity="0.95"
+                  >
+                    {CLUE_LABELS[i]}
+                  </text>
+
+                  {/* Clue text box */}
+                  <foreignObject x={box.x} y={box.y} width={box.width} height={box.height}>
+                    <div className="flex h-full w-full items-center justify-center rounded-lg bg-white/15 p-1.5">
                       <span
-                        className="text-center text-[0.62rem] leading-tight font-bold text-zinc-900 sm:text-xs md:text-sm"
-                        style={{ textShadow: '0 0 3px #fff, 0 0 6px #fff, 0 1px 1px #fff' }}
+                        className="text-center text-[0.65rem] font-bold leading-snug text-zinc-900 sm:text-[0.75rem] md:text-sm"
+                        style={{ textShadow: '0 0 3px #fff, 0 0 6px #fff' }}
                       >
-                        {renderClueTokens(clue)}
+                        {clue}
                       </span>
                     </div>
                   </foreignObject>
                 </g>
               );
             })}
+
+            {/* Centre "?" */}
             <text
               x="160"
-              y="137"
+              y="148"
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize="30"
-              fontWeight="800"
+              fontSize="32"
+              fontWeight="900"
               fill="#ffffff"
-              style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
+              style={{ filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.8))' }}
             >
               ?
             </text>
           </svg>
         </div>
+
         <p className="mt-1 text-center text-[0.65rem] text-zinc-400 sm:text-xs">
-          👆 點顏色圈圈唸出線索；點線索裡的底線單字可以看意思
+          👆 點顏色圈圈用英文唸出線索
         </p>
 
-        {vocabPopup && (
-          <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-xl border-2 border-[var(--hero-gold)] bg-white p-3 shadow-xl sm:right-4 sm:left-auto">
-            <div className="flex items-start gap-2">
-              <span className="text-2xl">{vocabPopup.emoji}</span>
-              <div className="flex-1">
-                <p className="font-bold text-zinc-900">
-                  {vocabPopup.word} <span className="text-zinc-500">{vocabPopup.zhuyin}</span>
-                </p>
-                <p className="text-sm text-zinc-700">
-                  {vocabPopup.zh}　{vocabPopup.en}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setVocabPopup(null)}
-                className="text-zinc-400 hover:text-zinc-900"
-                aria-label="關閉"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 英文排列組合（欄位縮小） */}
+        {/* ── Letter tiles ── */}
         <div className={`mt-3 flex flex-col items-center gap-2 p-2 sm:p-3 ${panelClass}`}>
           <p className="text-xs font-bold text-zinc-800 sm:text-sm">🔤 排列英文字母</p>
 
+          {/* Answer slots */}
           <div
             className={`flex gap-1.5 rounded-lg border-2 border-dashed p-2 transition-colors ${
               feedback === 'wrong' ? 'border-red-400 bg-red-50' : 'border-zinc-300 bg-white/50'
@@ -442,8 +356,11 @@ export default function DetectiveVennView() {
             })}
           </div>
 
-          {feedback === 'wrong' && <div className="text-xs font-bold text-[var(--hero-red)]">Try again! 💪</div>}
+          {feedback === 'wrong' && (
+            <div className="text-xs font-bold text-[var(--hero-red)]">Try again! 💪</div>
+          )}
 
+          {/* Tile pool */}
           <div className="flex flex-wrap justify-center gap-1.5">
             {pool.map((tile) => (
               <button
@@ -458,7 +375,7 @@ export default function DetectiveVennView() {
           </div>
         </div>
 
-        {/* 操作按鈕 */}
+        {/* ── Action buttons ── */}
         <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
           <button
             type="button"
