@@ -75,7 +75,14 @@ const games: GameEntry[] = [
   { href: '', emoji: '⚖️', title: '天平秤重拼單字', description: '等式與平衡概念、基礎數學計算', ready: false },
   { href: '', emoji: '🚀', title: '邏輯數列太空賽車', description: '數字規律與邏輯、數感訓練', ready: false },
   { href: '', emoji: '🍕', title: '分數披薩大廚', description: '分數概念、幾何分割、生活句型', ready: false },
-  { href: '', emoji: '👾', title: '維恩圖怪物分類', description: '邏輯集合、空間歸類、單字屬性分類', ready: false },
+  {
+    href: '/games/detective-venn',
+    emoji: '🔎',
+    title: '豬探長與牧探長',
+    titleEn: 'Venn Diagram Detective',
+    description: '維恩圖線索大追捕！看線索、排英文字母，還能點單字學意思，找出神秘單字',
+    ready: true,
+  },
   { href: '', emoji: '🧱', title: '牆洞大比拚（磚塊補補樂）', description: '面積守恆、單位換算、輔助線分割', ready: false },
   { href: '', emoji: '🟩', title: '幾何積木拼圖大挑戰', description: '空間心智旋轉、圖形分解與組合', ready: false },
 ];
