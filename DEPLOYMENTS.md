@@ -1,5 +1,21 @@
 # 部署紀錄
 
+## 2026-08-06 — 70f63f7
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **豬探長與牧探長 Sprite 美化**：以 CSS sprite sheet 替換所有 emoji 佔位符
+  - 豬探長（左）＆牧探長（右）：圓形邊框頭像按鈕，使用 sprite 角色圖
+  - 維恩圖三圓圈各配 eye（外觀）/ pin（位置）/ lightbulb（用途）sprite icon
+  - 右上角 TOP SECRET 戳印（旋轉 12°，透明度 70%，純裝飾）
+  - 標題列放大鏡 sprite、計分板金色徽章 sprite
+  - 確認按鈕放大鏡、下一題按鈕金徽章
+  - `public/detective/sprites.png`（1080×1080 sprite sheet）
+
+---
+
 ## 2026-08-06 — 5d04dae（v2.6.0）
 
 **網址**：https://phonics-flashcard.vercel.app
