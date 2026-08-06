@@ -124,6 +124,54 @@ const CLUES: Record<string, ClueTriple> = {
   wood:   { A: 'It is hard and brown.',       B: 'You find it in a forest.',      C: 'We use it to build things.' },
 };
 
+// ── Category hints for pig detective helper ──────────────────────────────────
+const WORD_CATEGORY: Record<string, string> = {
+  // animals
+  ant:'animal',bat:'animal',bear:'animal',bee:'animal',bird:'animal',bug:'animal',cat:'animal',
+  cow:'animal',crab:'animal',cub:'animal',deer:'animal',dog:'animal',duck:'animal',fish:'animal',
+  fly:'animal',fox:'animal',frog:'animal',goat:'animal',hen:'animal',horse:'animal',moth:'animal',
+  ox:'animal',pig:'animal',pup:'animal',rat:'animal',sheep:'animal',snail:'animal',wolf:'animal',worm:'animal',
+  // food
+  apple:'food',bread:'food',cake:'food',corn:'food',egg:'food',ham:'food',jam:'food',
+  milk:'food',nut:'food',pea:'food',yam:'food',
+  // home
+  bag:'home',bed:'home',box:'home',cap:'home',cup:'home',fan:'home',hat:'home',key:'home',
+  mat:'home',mop:'home',pan:'home',pot:'home',soap:'home',tub:'home',
+  // school
+  book:'school',map:'school',net:'school',pen:'school',pin:'school',
+  // vehicle
+  boat:'vehicle',bus:'vehicle',car:'vehicle',jet:'vehicle',ship:'vehicle',van:'vehicle',
+  // nature
+  flower:'nature',leaf:'nature',log:'nature',moon:'nature',mud:'nature',rain:'nature',
+  sand:'nature',seed:'nature',star:'nature',sun:'nature',tree:'nature',
+  // body
+  foot:'body',hand:'body',head:'body',mouth:'body',
+  // clothing
+  coat:'clothing',
+  // place / structure
+  door:'place',gate:'place',lake:'place',road:'place',wall:'place',
+  // misc
+  horn:'object',ring:'object',wood:'object',
+};
+
+const CATEGORY_HINT: Record<string, string> = {
+  animal:   'It is an animal.',
+  food:     'It is a food.',
+  home:     'It is something you use at home.',
+  school:   'It is something you use at school.',
+  vehicle:  'It is a vehicle.',
+  nature:   'It is found in nature.',
+  body:     'It is a part of your body.',
+  clothing: 'It is a piece of clothing.',
+  place:    'It is a place or structure.',
+  object:   'It is a type of object.',
+};
+
+export function getCategoryHint(word: string): string {
+  const cat = WORD_CATEGORY[word.toLowerCase()];
+  return cat ? CATEGORY_HINT[cat] ?? 'It is a real thing.' : 'It is a real thing.';
+}
+
 export function hasClues(word: string): boolean {
   return word.toLowerCase() in CLUES;
 }
