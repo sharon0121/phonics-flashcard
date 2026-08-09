@@ -1,6 +1,13 @@
 import { loadProgress, saveProgress, subscribe as onProgressChange } from './progress';
 import { loadCurriculum, saveCurriculum, subscribe as onCurriculumChange } from './curriculum';
 import { loadHanziWords, saveHanziWords, subscribe as onHanziWordsChange, type HanziWord } from './hanziWords';
+import {
+  loadKlotskiProgress, saveKlotskiProgress,
+  loadKlotskiItemsUsed, saveKlotskiItemsUsed,
+  subscribeKlotski,
+  type KlotskiLevelProgress,
+} from './klotskiProgress';
+import { loadPhotoStars, savePhotoStars, subscribePuzzle } from './puzzleProgress';
 import type { ProgressMap } from './types';
 import type { CurriculumMap } from './curriculum';
 
@@ -16,7 +23,10 @@ const PUSH_DEBOUNCE_MS = 1500;
 interface SyncState {
   progress: ProgressMap;
   curriculum: CurriculumMap;
-  hanziWords?: HanziWord[]; // optional — absent on records written before this field existed
+  hanziWords?: HanziWord[];
+  klotskiProgress?: Record<string, KlotskiLevelProgress>;
+  klotskiItemsUsed?: number;
+  puzzlePhotoStars?: Record<string, number>;
   updatedAt: number;
 }
 
@@ -46,6 +56,9 @@ function applyServerState(state: SyncState): void {
     saveProgress(state.progress);
     saveCurriculum(state.curriculum);
     saveHanziWords(state.hanziWords ?? []);
+    if (state.klotskiProgress) saveKlotskiProgress(state.klotskiProgress);
+    if (state.klotskiItemsUsed !== undefined) saveKlotskiItemsUsed(state.klotskiItemsUsed);
+    if (state.puzzlePhotoStars) savePhotoStars(state.puzzlePhotoStars);
     setLocalUpdatedAt(state.updatedAt);
   } finally {
     applyingRemote = false;
@@ -60,6 +73,9 @@ async function pushNow(): Promise<void> {
     progress: loadProgress(),
     curriculum: loadCurriculum(),
     hanziWords: loadHanziWords(),
+    klotskiProgress: loadKlotskiProgress(),
+    klotskiItemsUsed: loadKlotskiItemsUsed(),
+    puzzlePhotoStars: loadPhotoStars(),
     updatedAt,
   };
   try {
@@ -99,6 +115,8 @@ export function startSync(): void {
   onProgressChange(schedulePush);
   onCurriculumChange(schedulePush);
   onHanziWordsChange(schedulePush);
+  subscribeKlotski(schedulePush);
+  subscribePuzzle(schedulePush);
 
   (async () => {
     try {
@@ -125,7 +143,9 @@ export function startSync(): void {
         const localHasData =
           Object.keys(loadProgress()).length > 0 ||
           Object.keys(loadCurriculum()).length > 0 ||
-          loadHanziWords().length > 0;
+          loadHanziWords().length > 0 ||
+          Object.keys(loadKlotskiProgress()).length > 0 ||
+          Object.keys(loadPhotoStars()).length > 0;
         if (localHasData && !serverHasData) {
           await pushNow();
         } else if (isSyncState(server) && serverHasData) {
