@@ -55,7 +55,7 @@ const games: GameEntry[] = [
   },
   {
     href: '/games/schulte',
-    emoji: '🔍',
+    emoji: '👓',
     title: '舒爾特訓練',
     titleEn: 'Schulte Table',
     description: '注音符號、英文大小寫、數字、國字、單字，訓練專注力與視覺搜尋速度！',
@@ -75,6 +75,14 @@ const games: GameEntry[] = [
     title: '豬探長與牧探長',
     titleEn: 'Venn Diagram Detective',
     description: '維恩圖線索大追捕！看線索、排英文字母，還能點單字學意思，找出神秘單字',
+    ready: true,
+  },
+  {
+    href: '/games/smart-grid',
+    emoji: '🔢',
+    title: '聰明格',
+    titleEn: 'Smart Grid',
+    description: '3×3／4×4／5×5 加法邏輯格，每列每行填 1～N 不重複，粗框內數字加起來要對！',
     ready: true,
   },
   { href: '', emoji: '🧩', title: '七巧板單字拼圖', description: '平面幾何、圖形旋轉、英文拼字', ready: false },

@@ -14,13 +14,13 @@ import {
 import { useCustomWords } from '@/lib/customWords';
 import { useDetectiveWordSources } from '@/lib/detectiveVennSettings';
 import { hasClues, getClueTriple, getCategoryHint } from '@/lib/detectiveVennClues';
+import { useDetectiveVennHistory, recordDetectiveCompletion } from '@/lib/detectiveVennHistory';
+import { playCelebrationChime } from '@/lib/sound';
 
 // ── Sprite sheet (1254×1254, transparent bg) ──────────────────────────────────
 const IMG_W = 1254;
 const IMG_H = 1254;
 const SPRITE_DATA = {
-  pig:       { x: 0,   y: 0,   w: 627, h: 502 },
-  boy:       { x: 627, y: 0,   w: 627, h: 502 },
   badge:     { x: 418, y: 502, w: 418, h: 375 },
   magnifier: { x: 836, y: 502, w: 418, h: 375 },
 } as const;
@@ -56,8 +56,6 @@ interface Tile { id: number; letter: string; }
 // Lighter pastel colors — dark text stays readable on top
 const CLUE_COLORS: [string, string, string] = ['#60a5fa', '#4ade80', '#c084fc'];
 
-const DEFAULT_PIG_TEXT   = '嗨！一起找出秘密單字吧！點我求助喔！';
-const DEFAULT_SHEEP_TEXT = '點我讓我唸出答案！（限5次）';
 const WORD_LENGTH_RE     = /^[A-Za-z]{3,8}$/;
 const MAX_HELPS          = 5;
 
@@ -72,17 +70,38 @@ function shuffle<T>(arr: T[]): T[] {
 function makeTiles(word: string): Tile[] {
   return shuffle(word.split('').map((letter, id) => ({ id, letter })));
 }
-function speak(text: string, lang: string) {
+// Name fragments used by common platforms (Windows/Edge, Chrome, macOS/iOS) to
+// mark a male voice — the Web Speech API has no gender field, so this is a
+// best-effort match. If the device has no male voice for the language, the
+// system default voice is used instead.
+const MALE_VOICE_HINTS = ['male', 'yunjhe', 'yunjian', 'yunyang', 'yunxi', 'kangkang', 'boy', 'daniel', 'alex', 'fred', 'david', 'mark'];
+
+function pickVoice(lang: string, preferMale: boolean): SpeechSynthesisVoice | undefined {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return undefined;
+  const voices = window.speechSynthesis.getVoices();
+  const short = lang.slice(0, 2).toLowerCase();
+  const matches = voices.filter((v) => v.lang.toLowerCase().startsWith(short));
+  if (!preferMale) return matches[0];
+  return matches.find((v) => MALE_VOICE_HINTS.some((h) => v.name.toLowerCase().includes(h))) ?? matches[0];
+}
+
+function speak(text: string, lang: string, preferMale = false) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang; u.rate = 0.92;
+  const voice = pickVoice(lang, preferMale);
+  if (voice) u.voice = voice;
   window.speechSynthesis.cancel();
   setTimeout(() => window.speechSynthesis.speak(u), 50);
 }
-function pickNextWord(pool: Word[], usedIds: Set<string>, excludeId?: string): Word {
-  let available = pool.filter((w) => !usedIds.has(w.id) && w.id !== excludeId);
-  if (available.length === 0) { usedIds.clear(); available = pool.filter((w) => w.id !== excludeId); }
-  if (available.length === 0) available = pool;
+// Draws from `preferredPool` (words not yet mastered) whenever it has options,
+// so a word cleared from the trophy record in Settings comes right back into
+// rotation; falls back to the full pool once everything has been solved once.
+function pickNextWord(pool: Word[], usedIds: Set<string>, excludeId?: string, preferredPool?: Word[]): Word {
+  const base = preferredPool && preferredPool.length > 0 ? preferredPool : pool;
+  let available = base.filter((w) => !usedIds.has(w.id) && w.id !== excludeId);
+  if (available.length === 0) { usedIds.clear(); available = base.filter((w) => w.id !== excludeId); }
+  if (available.length === 0) available = base;
   return available[Math.floor(Math.random() * available.length)];
 }
 
@@ -128,15 +147,23 @@ export default function DetectiveVennView() {
     return map;
   }, [thisWeek, reinforcement, custom, phonics, sightWords]);
 
-  const [currentWord, setCurrentWord] = useState<Word>(() => pickNextWord(activeWords, new Set()));
+  // Words the child hasn't solved yet (or that a parent cleared in Settings)
+  // are drawn preferentially — see pickNextWord.
+  const history = useDetectiveVennHistory();
+  const masteredWords = useMemo(() => new Set(history.map((r) => r.word.toLowerCase())), [history]);
+  const notMasteredWords = useMemo(
+    () => activeWords.filter((w) => !masteredWords.has(w.word.toLowerCase())),
+    [activeWords, masteredWords],
+  );
+
+  const [currentWord, setCurrentWord] = useState<Word>(() =>
+    pickNextWord(activeWords, new Set(), undefined, notMasteredWords),
+  );
   const usedIdsRef = useRef(new Set<string>([currentWord.id]));
   const [pool, setPool]       = useState<Tile[]>(() => makeTiles(currentWord.word.toUpperCase()));
   const [placed, setPlaced]   = useState<Tile[]>([]);
   const [questionCount, setQuestionCount] = useState(1);
-  const [solvedCount, setSolvedCount]     = useState(0);
   const [mood, setMood]         = useState<Mood>(null);
-  const [pigText, setPigText]   = useState(DEFAULT_PIG_TEXT);
-  const [sheepText, setSheepText] = useState(DEFAULT_SHEEP_TEXT);
   const [feedback, setFeedback] = useState<'idle' | 'wrong'>('idle');
   const [showNext, setShowNext] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -148,12 +175,11 @@ export default function DetectiveVennView() {
   const clues = [clueTriple.A, clueTriple.B, clueTriple.C] as const;
 
   function loadQuestion() {
-    const next = pickNextWord(activeWords, usedIdsRef.current, currentWord.id);
+    const next = pickNextWord(activeWords, usedIdsRef.current, currentWord.id, notMasteredWords);
     usedIdsRef.current.add(next.id);
     setCurrentWord(next);
     setPool(makeTiles(next.word.toUpperCase()));
     setPlaced([]); setMood(null); setFeedback('idle');
-    setPigText(DEFAULT_PIG_TEXT); setSheepText(DEFAULT_SHEEP_TEXT);
     setShowNext(false); setShowAnswer(false); setQuestionCount((c) => c + 1);
   }
 
@@ -170,35 +196,26 @@ export default function DetectiveVennView() {
   }
 
   function handleHelpPig() {
-    // Before ? clicked: just speak greeting
-    if (!showAnswer) { speak(pigText, 'zh-TW'); return; }
     if (pigHelpsLeft <= 0) return;
     const hint = getCategoryHint(currentWord.word);
-    setPigText(`🔍 ${hint}`);
     speak(hint, 'en-US');
     setPigHelpsLeft((c) => c - 1);
   }
   function handleHelpSheep() {
-    if (!showAnswer) { speak(sheepText, 'zh-TW'); return; }
     if (sheepHelpsLeft <= 0) return;
-    const text = currentWord.word.toUpperCase();
-    setSheepText(`🔊 ${text}`);
-    speak(currentWord.word, 'en-US');
+    speak(currentWord.word, 'en-US', true);
     setSheepHelpsLeft((c) => c - 1);
   }
   function handleConfirm() {
     const attempt = placed.map((t) => t.letter).join('');
     if (placed.length === currentWord.word.length && attempt === currentWord.word.toUpperCase()) {
       setMood('happy');
-      setPigText('太棒了！成功破案！🎉');
-      setSheepText(`Great! ${currentWord.word.toUpperCase()} — ${currentWord.zh}!`);
-      speak('太棒了！成功破案！', 'zh-TW');
-      setSolvedCount((c) => c + 1);
       setShowNext(true);
+      recordDetectiveCompletion(currentWord.word, currentWord.zh, Date.now());
+      playCelebrationChime();
     } else {
       setMood('sad');
       setFeedback('wrong');
-      setPigText('再想一下，看看三個線索！');
       setTimeout(() => {
         setMood(null); setFeedback('idle');
         setPool((p) => shuffle([...p, ...placed]));
@@ -227,7 +244,7 @@ export default function DetectiveVennView() {
   };
 
   return (
-    <main className="relative mx-auto w-full max-w-3xl flex-1 px-3 py-2 sm:py-6">
+    <main className="relative mx-auto w-full max-w-5xl flex-1 px-3 py-2 sm:py-6">
       <HeroMascot src="/heroes/cutout-game.png" alt="" />
       <div className="relative z-10">
 
@@ -246,7 +263,7 @@ export default function DetectiveVennView() {
             {/* Scoreboard */}
             <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
               <Sprite id="badge" size={20} />
-              <span className="text-xs font-bold text-white">第 {questionCount} 題　破案 {solvedCount}</span>
+              <span className="text-xs font-bold text-white">第 {questionCount} 題　🏆 {history.length}</span>
             </div>
             <Link href="/games/detective-venn/settings" aria-label="遊戲設定"
               className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-[var(--hero-gold)] bg-white/10 text-lg shadow hover:bg-white/20">
@@ -260,11 +277,24 @@ export default function DetectiveVennView() {
           🔎 豬探長與牧探長
         </h1>
 
-        {/* ── Big Venn panel (detectives inside at bottom corners) ── */}
-        <div className="relative mt-2 overflow-hidden rounded-2xl border-2 border-[var(--hero-gold)] bg-gradient-to-br from-sky-50 via-white to-fuchsia-50 shadow-lg">
+        {/* ── Venn panel + answer area: side-by-side from md up, stacked below it ── */}
+        <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-start">
 
-          {/* SVG Venn — takes full panel width, pb-28 reserves space for detectives */}
-          <div className="px-1 pt-2 pb-28 sm:px-2 sm:pt-3 sm:pb-32">
+        {/* ── Big Venn panel (detectives inside at bottom corners) ── */}
+        <div className="relative overflow-hidden rounded-2xl border-2 border-[var(--hero-gold)] bg-gradient-to-br from-sky-50 via-white to-fuchsia-50 shadow-lg lg:w-[36rem] lg:shrink-0">
+
+          {/* Celebration overlay — sits directly on the Venn diagram, no extra section */}
+          {mood === 'happy' && (
+            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+              <div className="animate-bounce rounded-2xl border-[3px] border-[var(--hero-gold)] bg-white/95 px-6 py-4 text-center shadow-xl">
+                <div className="text-4xl">🎆🏆🎆</div>
+                <div className="mt-1 text-lg font-bold text-[var(--hero-red)]">🎉 破案成功！</div>
+              </div>
+            </div>
+          )}
+
+          {/* SVG Venn — takes full panel width, bottom padding reserves space for the detectives */}
+          <div className="px-1 pt-2 pb-32 sm:px-2 sm:pt-3 sm:pb-44 md:pb-56 lg:pb-80">
             <svg viewBox="0 0 360 335" className="w-full">
               {clues.map((clue, i) => {
                 const color  = CLUE_COLORS[i];
@@ -347,112 +377,112 @@ export default function DetectiveVennView() {
             </svg>
           </div>
 
-          {/* Pig detective — bottom-left, no frame */}
-          <div className="absolute bottom-3 left-3 z-20 flex flex-col items-start gap-1.5">
-            <div className="max-w-[130px] rounded-xl rounded-bl-none bg-zinc-900/85 px-2 py-1.5 text-[0.6rem] leading-snug text-white shadow sm:text-[0.65rem]">
-              {pigText}
-            </div>
-            <button
-              type="button"
-              onClick={handleHelpPig}
-              disabled={showAnswer && pigHelpsLeft <= 0}
-              className={`relative transition-opacity ${showAnswer && pigHelpsLeft <= 0 ? 'opacity-40' : ''} ${moodClass}`}
-              aria-label="豬探長"
-            >
-              <Sprite id="pig" size={80} />
-              {showAnswer && pigHelpsLeft > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--hero-red)] text-[0.55rem] font-extrabold text-white shadow">
-                  {pigHelpsLeft}
-                </span>
-              )}
-            </button>
-          </div>
+          {/* Pig detective — bottom-left, half-body cutout, click for a hint */}
+          <button
+            type="button"
+            onClick={handleHelpPig}
+            disabled={pigHelpsLeft <= 0}
+            className={`absolute bottom-0 left-0 z-20 transition-opacity ${pigHelpsLeft <= 0 ? 'opacity-40' : ''} ${moodClass}`}
+            aria-label="豬探長：點擊獲得提示"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/detective/pig-detective.png"
+              alt=""
+              className="h-36 w-auto drop-shadow-lg sm:h-48 md:h-64 lg:h-96"
+            />
+            <span className="absolute -right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--hero-red)] text-xs font-extrabold text-white shadow sm:h-7 sm:w-7 sm:text-sm">
+              {pigHelpsLeft}
+            </span>
+          </button>
 
-          {/* Boy detective — bottom-right, no frame */}
-          <div className="absolute bottom-3 right-3 z-20 flex flex-col items-end gap-1.5">
-            <div className="max-w-[130px] rounded-xl rounded-br-none bg-zinc-900/85 px-2 py-1.5 text-right text-[0.6rem] leading-snug text-white shadow sm:text-[0.65rem]">
-              {sheepText}
-            </div>
-            <button
-              type="button"
-              onClick={handleHelpSheep}
-              disabled={showAnswer && sheepHelpsLeft <= 0}
-              className={`relative transition-opacity ${showAnswer && sheepHelpsLeft <= 0 ? 'opacity-40' : ''} ${moodClass}`}
-              aria-label="牧探長"
-            >
-              <Sprite id="boy" size={80} />
-              {showAnswer && sheepHelpsLeft > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--hero-red)] text-[0.55rem] font-extrabold text-white shadow">
-                  {sheepHelpsLeft}
-                </span>
-              )}
-            </button>
-          </div>
+          {/* Boy detective — bottom-right, half-body cutout, click for a hint */}
+          <button
+            type="button"
+            onClick={handleHelpSheep}
+            disabled={sheepHelpsLeft <= 0}
+            className={`absolute bottom-0 right-0 z-20 transition-opacity ${sheepHelpsLeft <= 0 ? 'opacity-40' : ''} ${moodClass}`}
+            aria-label="牧探長：點擊獲得提示"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/detective/boy-detective.png"
+              alt=""
+              className="h-36 w-auto drop-shadow-lg sm:h-48 md:h-64 lg:h-96"
+            />
+            <span className="absolute -left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--hero-red)] text-xs font-extrabold text-white shadow sm:h-7 sm:w-7 sm:text-sm">
+              {sheepHelpsLeft}
+            </span>
+          </button>
 
           <p className="pb-2 text-center text-[0.58rem] text-zinc-400 sm:text-xs">
             {showAnswer ? '👆 點圓圈唸線索 · 點偵探求助' : '👆 點 ❓ 開始作答 · 點圓圈唸線索'}
           </p>
         </div>
 
-        {/* ── Letter tiles (shown after clicking ?) ── */}
+        {/* ── Answer column: tiles + buttons, beside the panel from md up ── */}
         {showAnswer && (
-          <div className="mt-3 flex flex-col items-center gap-2 rounded-2xl border-2 border-[var(--hero-gold)] bg-white/95 p-2 shadow-md sm:p-3">
-            <p className="text-xs font-bold text-zinc-800 sm:text-sm">🔤 排列英文字母，拼出秘密單字！</p>
+          <div className="flex flex-col items-center gap-2 lg:w-72 lg:shrink-0">
+            <div className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-[var(--hero-gold)] bg-white/95 p-2 shadow-md sm:p-3">
+              <p className="text-xs font-bold text-zinc-800 sm:text-sm">🔤 排列英文字母，拼出秘密單字！</p>
 
-            {/* Answer slots */}
-            <div className={`flex flex-wrap justify-center gap-1.5 rounded-lg border-2 border-dashed p-2 transition-colors ${
-              feedback === 'wrong' ? 'border-red-400 bg-red-50' : 'border-zinc-300 bg-white/50'
-            }`}>
-              {Array.from({ length: currentWord.word.length }, (_, i) => {
-                const tile = placed[i];
-                return (
-                  <button key={i} type="button" disabled={!tile} onClick={() => removeTile(i)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-md text-lg font-extrabold shadow sm:h-12 sm:w-12 sm:text-2xl ${
-                      tile ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-white/40 text-transparent'
-                    }`}>
-                    {tile ? tile.letter : '_'}
+              {/* Answer slots */}
+              <div className={`flex flex-wrap justify-center gap-1.5 rounded-lg border-2 border-dashed p-2 transition-colors ${
+                feedback === 'wrong' ? 'border-red-400 bg-red-50' : 'border-zinc-300 bg-white/50'
+              }`}>
+                {Array.from({ length: currentWord.word.length }, (_, i) => {
+                  const tile = placed[i];
+                  return (
+                    <button key={i} type="button" disabled={!tile} onClick={() => removeTile(i)}
+                      className={`flex h-10 w-10 items-center justify-center rounded-md text-lg font-extrabold shadow sm:h-12 sm:w-12 sm:text-2xl ${
+                        tile ? 'bg-[var(--hero-gold)] text-zinc-900' : 'bg-white/40 text-transparent'
+                      }`}>
+                      {tile ? tile.letter : '_'}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {feedback === 'wrong' && <div className="text-xs font-bold text-[var(--hero-red)]">Try again! 💪</div>}
+
+              {/* Tile pool */}
+              <div className="flex flex-wrap justify-center gap-1.5">
+                {pool.map((tile) => (
+                  <button key={tile.id} type="button" onClick={() => placeTile(tile)}
+                    className="flex h-10 w-10 items-center justify-center rounded-md bg-white text-lg font-extrabold text-zinc-900 shadow hover:bg-zinc-100 sm:h-12 sm:w-12 sm:text-2xl">
+                    {tile.letter}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
 
-            {feedback === 'wrong' && <div className="text-xs font-bold text-[var(--hero-red)]">Try again! 💪</div>}
-
-            {/* Tile pool */}
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {pool.map((tile) => (
-                <button key={tile.id} type="button" onClick={() => placeTile(tile)}
-                  className="flex h-10 w-10 items-center justify-center rounded-md bg-white text-lg font-extrabold text-zinc-900 shadow hover:bg-zinc-100 sm:h-12 sm:w-12 sm:text-2xl">
-                  {tile.letter}
+            {/* ── Action buttons (confirm + next only) ── */}
+            <div className="flex items-center justify-center gap-3">
+              {!showNext && (
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  className="flex items-center gap-2 rounded-xl bg-[var(--hero-red)] px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-[var(--hero-red-dark)] sm:px-8 sm:py-3 sm:text-base"
+                >
+                  <Sprite id="magnifier" size={22} />
+                  確認破案
                 </button>
-              ))}
+              )}
+              {showNext && (
+                <button
+                  type="button"
+                  onClick={loadQuestion}
+                  className="flex items-center gap-2 rounded-xl bg-[var(--hero-gold)] px-6 py-2.5 text-sm font-bold text-zinc-900 shadow hover:brightness-95 sm:px-8 sm:py-3 sm:text-base"
+                >
+                  <Sprite id="badge" size={22} />
+                  下一題 →
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {/* ── Action buttons (confirm + next only) ── */}
-        {showAnswer && (
-          <div className="mt-3 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={handleConfirm}
-              className="flex items-center gap-2 rounded-xl bg-[var(--hero-red)] px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-[var(--hero-red-dark)] sm:px-8 sm:py-3 sm:text-base"
-            >
-              <Sprite id="magnifier" size={22} />
-              確認破案
-            </button>
-            {showNext && (
-              <button
-                type="button"
-                onClick={loadQuestion}
-                className="flex items-center gap-2 rounded-xl bg-[var(--hero-gold)] px-6 py-2.5 text-sm font-bold text-zinc-900 shadow hover:brightness-95 sm:px-8 sm:py-3 sm:text-base"
-              >
-                <Sprite id="badge" size={22} />
-                下一題 →
-              </button>
-            )}
-          </div>
-        )}
+        </div>
 
       </div>
 

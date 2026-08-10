@@ -8,9 +8,11 @@ import {
   type WordSourceKey,
 } from '@/lib/heroClimbSettings';
 import { useDetectiveWordSources, setDetectiveWordSources } from '@/lib/detectiveVennSettings';
+import { useDetectiveWordSummaries, removeDetectiveCompletion } from '@/lib/detectiveVennHistory';
 
 export default function DetectiveVennSettingsView() {
   const sources = useDetectiveWordSources();
+  const wordSummaries = useDetectiveWordSummaries();
 
   function toggleSource(key: WordSourceKey) {
     const next = sources.includes(key) ? sources.filter((k) => k !== key) : [...sources, key];
@@ -33,6 +35,39 @@ export default function DetectiveVennSettingsView() {
         Back
       </Link>
       <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 遊戲設定</h1>
+
+      <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
+        <h2 className="text-sm font-bold text-zinc-900">🏆 已破案的單字（共 {wordSummaries.length} 個）</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          如果小朋友對某個單字還不熟，可以移除它的紀錄，之後出題會優先再考這個單字。
+        </p>
+        {wordSummaries.length === 0 ? (
+          <p className="mt-2 text-sm text-zinc-400">還沒有破過任何案件。</p>
+        ) : (
+          <div className="mt-2 flex max-h-64 flex-col gap-1.5 overflow-y-auto">
+            {wordSummaries.map((s) => (
+              <div
+                key={s.word}
+                className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-900"
+              >
+                <span>
+                  {s.word}
+                  <span className="ml-2 text-zinc-500">（{s.zh}）</span>
+                  <span className="ml-2 text-xs text-zinc-400">破案 {s.count} 次</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeDetectiveCompletion(s.word)}
+                  aria-label="移除這個單字的破案紀錄"
+                  className="ml-2 rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-200 hover:text-red-500"
+                >
+                  🗑️
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/95 p-4">
         <div className="flex items-center justify-between">
