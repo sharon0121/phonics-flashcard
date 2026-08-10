@@ -11,7 +11,10 @@ const KEY = 'phonics_sync_state';
 interface SyncState {
   progress: ProgressMap;
   curriculum: CurriculumMap;
-  hanziWords?: HanziWord[]; // optional — absent on records written before this field existed
+  hanziWords?: HanziWord[];
+  klotskiProgress?: Record<string, unknown>;
+  klotskiItemsUsed?: number;
+  puzzlePhotoStars?: Record<string, number>;
   updatedAt: number;
 }
 

@@ -1,5 +1,35 @@
 # 部署紀錄
 
+## 2026-08-08 — dpl_GiSnrDKw6vXTCNzCZf5jVY9dhpDN
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **分數披薩大廚 大幅更新**：
+  - 每局隨機打亂 10 種口味順序，初始 3 種不再固定
+  - 披薩底色隨選擇口味動態改變（TOPPING_PIZZA_COLOR）
+  - 披薩配料顯示玩家選的口味（非客人訂單口味）
+  - 答對 12 句隨機恭喜詞（含 Nice work!/Nice job!），語音朗讀
+  - 答錯 10 句隨機鼓勵詞，語音朗讀，回口味選擇重試（計時重置）
+  - ⚙️ 計時難度設定面板（每 N 題縮短 X 秒，最短時間可選）
+  - 預設：每答對 3 題 -2 秒，最短 8 秒，縮短時彈出 ⚡ Speed up 通知
+  - 錢幣簡化為 4 種（100/50/10/1），格子固定高度不再被裁切
+  - 切割完格線方向一致（even-N 修正起始角度）
+  - 動物頭像放大 1.5 倍，上下置中
+  - 移除動物與對話框之間的箭頭
+  - Total 區塊垂直置中於橫線與底部之間
+  - Back 按鈕樣式統一（暫停/標題列）
+  - 選中口味邊框 z-10 修正（不被相鄰格遮住）
+
+- **動物華容道 跨裝置進度同步**：
+  - `klotskiProgress.ts` 新增 load/save/subscribe export
+  - `sync.ts` 擴充同步 klotskiProgress + klotskiItemsUsed
+  - `api/sync/route.ts` SyncState 加可選 klotski 欄位
+  - 電腦玩到第 N 關，平板自動從第 N 關繼續
+
+---
+
 ## 2026-08-07 — a48f328
 
 **網址**：https://phonics-flashcard.vercel.app

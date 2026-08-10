@@ -107,6 +107,13 @@ export function consumeKlotskiSolutionItem(): void {
   writeItemsUsed(readItemsUsed() + 1);
 }
 
+// ── Sync-friendly load/save (used by src/lib/sync.ts) ────────────────────────
+export function loadKlotskiProgress(): ProgressMap { return readProgress(); }
+export function saveKlotskiProgress(p: ProgressMap): void { writeProgress(p); }
+export function loadKlotskiItemsUsed(): number { return readItemsUsed(); }
+export function saveKlotskiItemsUsed(n: number): void { writeItemsUsed(n); }
+export { subscribe as subscribeKlotski };
+
 export function resetKlotskiProgress(): void {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(ITEMS_USED_KEY);
