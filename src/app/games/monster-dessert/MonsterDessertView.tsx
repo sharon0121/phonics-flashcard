@@ -48,6 +48,9 @@ const MONSTER_ART: Record<MonsterType, string[]> = {
   boss: ['monster-boss'],
 };
 const CONFETTI_EMOJI = ['🎉', '✨', '⭐', '🍬', '🎊'];
+const MAX_LIVES = 5;
+// A life comes back after this many correct rounds in a row.
+const LIFE_REGEN_STREAK = 5;
 const BOSS_PAIRS: [number, number][] = [
   [2, 3],
   [3, 4],
@@ -330,20 +333,22 @@ function PlateCanvas({
   );
 }
 
-// Single fixed-size "arcade cabinet" frame — mirrors 分數披薩大廚's GameFrame so
-// every zone (header / customer / work area / actions) reads as one screen
-// instead of a stack of separate cards.
+// A responsive "arcade cabinet" frame — mirrors 分數披薩大廚's GameFrame so every
+// zone (header / customer / work area / actions) reads as one screen instead
+// of a stack of separate cards. Caps at 960×640 on desktop, but shrinks to
+// fit phone/iPad viewports — the bottom row inside switches from a 3-column
+// layout to a stacked one at the `md` breakpoint to match (see the JSX below).
 function GameFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-center bg-[#0b1130] p-4" style={{ minHeight: 'calc(100vh - 56px)' }}>
+    <div className="flex items-center justify-center bg-[#0b1130] p-2 sm:p-4" style={{ minHeight: 'calc(100vh - 56px)' }}>
       <div
-        className="relative flex flex-col overflow-hidden rounded-2xl bg-[#f0f9ff]"
+        className="relative flex w-full flex-col overflow-hidden rounded-2xl bg-[#f0f9ff]"
         style={{
-          width: '960px',
-          height: '640px',
-          flexShrink: 0,
+          maxWidth: '960px',
+          height: 'min(760px, calc(100vh - 88px))',
+          minHeight: '480px',
           border: '3px solid #0ea5e9',
-          boxShadow: '0 0 50px rgba(236,72,153,0.3),0 0 0 1px rgba(236,72,153,0.15)',
+          boxShadow: '0 0 50px rgba(14,165,233,0.3),0 0 0 1px rgba(14,165,233,0.15)',
         }}
       >
         {children}
@@ -363,6 +368,15 @@ export default function MonsterDessertView() {
   const progress = useMonsterDessertProgress();
 
   const [streak, setStreak] = useState(0);
+  const [lives, setLives] = useState(MAX_LIVES);
+  const [gameOver, setGameOver] = useState(false);
+  const livesRef = useRef(MAX_LIVES);
+  useEffect(() => { livesRef.current = lives; }, [lives]);
+  function gainLife() {
+    const next = Math.min(MAX_LIVES, livesRef.current + 1);
+    livesRef.current = next;
+    setLives(next);
+  }
   const bossStageRef = useRef<number | null>(null);
   const idCounterRef = useRef(0);
   function nextId(): number {
@@ -415,6 +429,8 @@ export default function MonsterDessertView() {
   const pausedRef = useRef(false);
   const pausedAtRef = useRef<number | null>(null);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
+  const gameOverRef = useRef(false);
+  useEffect(() => { gameOverRef.current = gameOver; }, [gameOver]);
 
   const deadlineRef = useRef(0);
   const phaseRef = useRef<Phase>('building');
@@ -445,8 +461,8 @@ export default function MonsterDessertView() {
   }
 
   // Shared "wrong" ending — used for timeouts and for building the wrong
-  // number of plates. Resets streak/combo/boss-chain, shows why it was
-  // wrong, then moves on to the next customer.
+  // number of plates. Resets streak/combo/boss-chain, costs one life, shows
+  // why it was wrong, then either moves on or ends the game at 0 lives.
   function failRound(message: string) {
     setStreak(0);
     setComboPerfectStreak(0);
@@ -454,8 +470,26 @@ export default function MonsterDessertView() {
     bossStageRef.current = null;
     setMonsterMood('sad');
     playErrorSound();
+    const nextLives = Math.max(0, livesRef.current - 1);
+    livesRef.current = nextLives;
+    setLives(nextLives);
     setBanner({ text: message, key: performance.now() });
-    setTimeout(() => { setBanner(null); loadNextRound(); }, 2600);
+    if (nextLives <= 0) {
+      setTimeout(() => { setBanner(null); setGameOver(true); }, 2600);
+    } else {
+      setTimeout(() => { setBanner(null); loadNextRound(); }, 2600);
+    }
+  }
+
+  function restartGame() {
+    livesRef.current = MAX_LIVES;
+    setLives(MAX_LIVES);
+    setGameOver(false);
+    setStreak(0);
+    setComboPerfectStreak(0);
+    setPartyModeActive(false);
+    bossStageRef.current = null;
+    loadNextRound();
   }
 
   function handleTimeout() {
@@ -472,7 +506,7 @@ export default function MonsterDessertView() {
     let timedOut = false;
     function tick() {
       const now = performance.now();
-      if ((phaseRef.current === 'building' || phaseRef.current === 'counting') && !timedOut && !pausedRef.current) {
+      if ((phaseRef.current === 'building' || phaseRef.current === 'counting') && !timedOut && !pausedRef.current && !gameOverRef.current) {
         const remainingMs = deadlineRef.current - now;
         const sec = Math.max(0, Math.ceil(remainingMs / 1000));
         if (sec !== lastDisplayed) { lastDisplayed = sec; setSecsLeft(sec); }
@@ -623,6 +657,11 @@ export default function MonsterDessertView() {
 
     const newStreak = streak + 1;
     setStreak(newStreak);
+    if (newStreak > 0 && newStreak % LIFE_REGEN_STREAK === 0 && livesRef.current < MAX_LIVES) {
+      gainLife();
+      setBanner({ text: `❤️ +1 Life! ${LIFE_REGEN_STREAK} correct in a row!`, key: performance.now() });
+      setTimeout(() => setBanner(null), 2000);
+    }
 
     let newPerfectStreak = comboPerfectStreak;
     if (isPerfect) {
@@ -662,7 +701,9 @@ export default function MonsterDessertView() {
         bossStageRef.current = (round.bossStage ?? 1) + 1;
       } else {
         bossStageRef.current = null;
-        setTimeout(() => setBanner({ text: '🏆 You fed the whole BOSS!', key: performance.now() }), 2600);
+        const gainedLife = livesRef.current < MAX_LIVES;
+        if (gainedLife) gainLife();
+        setTimeout(() => setBanner({ text: gainedLife ? '🏆 You fed the whole BOSS! ❤️ +1 Life!' : '🏆 You fed the whole BOSS!', key: performance.now() }), 2600);
       }
     }
   }
@@ -706,7 +747,21 @@ export default function MonsterDessertView() {
   return (
     <GameFrame>
       {/* ── Overlays ── */}
-      {paused && (
+      {gameOver && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 rounded-2xl bg-black/85 text-center">
+          <p className="text-6xl">💔</p>
+          <p className="text-3xl font-black text-white">Game Over</p>
+          <p className="text-sm font-bold text-zinc-300">Best streak this run: {streak}</p>
+          <p className="text-sm font-bold text-amber-300">🪙 Total coins: {progress.coins}</p>
+          <button type="button" onClick={restartGame} className="rounded-full bg-sky-500 px-10 py-3 text-xl font-black text-white shadow-xl hover:bg-sky-600 active:scale-95">
+            🔄 Play Again
+          </button>
+          <Link href="/games" className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-bold text-white hover:bg-white/20">
+            {backArrow} Back
+          </Link>
+        </div>
+      )}
+      {paused && !gameOver && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 rounded-2xl bg-black/75">
           <p className="text-7xl">⏸</p>
           <p className="text-3xl font-black text-white">Paused</p>
@@ -720,20 +775,27 @@ export default function MonsterDessertView() {
       )}
 
       {/* ── Header ── */}
-      <div className="flex shrink-0 items-center justify-between border-b-2 border-sky-300 bg-gradient-to-r from-sky-100 to-blue-100 px-3 py-1.5">
-        <Link href="/games" className="flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-900/10 px-3 py-1.5 text-sm font-bold text-zinc-700 hover:bg-zinc-900/15">
-          {backArrow} Back
-        </Link>
-        <span className="text-sm font-black text-sky-700">🍰 Monster Dessert Shop</span>
-        <div className="flex shrink-0 items-center gap-2">
-          {streak >= 3 && <span className="rounded-full bg-purple-100 px-2 py-0.5 text-sm font-black text-purple-600">🔥{streak}</span>}
-          <span className="text-sm font-bold text-amber-600">🪙{progress.coins}</span>
-          {phase !== 'equation' && (
-            <button type="button" onClick={togglePause} className="px-1 text-xl text-sky-400 transition-transform hover:scale-110 active:scale-90" title="暫停">
+      <div className="flex shrink-0 items-center justify-between gap-1 border-b-2 border-sky-300 bg-gradient-to-r from-sky-100 to-blue-100 px-2 py-1.5 sm:px-3">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Link href="/games" className="flex shrink-0 items-center gap-1 rounded-lg bg-zinc-900/10 px-2 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-900/15 sm:gap-1.5 sm:px-3 sm:text-sm">
+            {backArrow} <span className="hidden sm:inline">Back</span>
+          </Link>
+          <span className="flex items-center gap-0.5 text-xs sm:text-sm" aria-label={`${lives} lives left`}>
+            {Array.from({ length: MAX_LIVES }, (_, i) => (
+              <span key={i}>{i < lives ? '❤️' : '🤍'}</span>
+            ))}
+          </span>
+        </div>
+        <span className="truncate text-xs font-black text-sky-700 sm:text-sm">🍰 Monster Dessert Shop</span>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {streak >= 3 && <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-xs font-black text-purple-600 sm:px-2 sm:text-sm">🔥{streak}</span>}
+          <span className="text-xs font-bold text-amber-600 sm:text-sm">🪙{progress.coins}</span>
+          {phase !== 'equation' && !gameOver && (
+            <button type="button" onClick={togglePause} className="px-1 text-lg text-sky-400 transition-transform hover:scale-110 active:scale-90 sm:text-xl" title="暫停">
               ⏸
             </button>
           )}
-          <Link href="/games/monster-dessert/settings" aria-label="遊戲設定" className="px-1 text-xl text-sky-400 transition-transform hover:scale-110 active:scale-90">
+          <Link href="/games/monster-dessert/settings" aria-label="遊戲設定" className="px-1 text-lg text-sky-400 transition-transform hover:scale-110 active:scale-90 sm:text-xl">
             ⚙️
           </Link>
         </div>
@@ -752,22 +814,21 @@ export default function MonsterDessertView() {
       {/* ══ MAIN LAYOUT ═══════════════════════════════════════════════════════ */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* ── TOP ROW: monster + speech bubble ── */}
-        <div className="flex shrink-0 items-center gap-3 border-b-2 border-sky-200 px-4 py-2" style={{ height: '24%', background: 'linear-gradient(135deg,#eff6ff,#e0f2fe)' }}>
+        <div className="flex shrink-0 items-center gap-2 border-b-2 border-sky-200 px-2 py-2 sm:gap-3 sm:px-4" style={{ height: '26%', background: 'linear-gradient(135deg,#eff6ff,#e0f2fe)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`/monster-dessert/${round.monsterVariant}-${monsterMoodKey}.png`}
             alt=""
-            className={`shrink-0 object-contain drop-shadow ${monsterMood === 'happy' ? 'animate-bounce' : ''}`}
-            style={{ height: round.monsterType === 'boss' ? '108px' : '92px', width: 'auto' }}
+            className={`h-14 w-auto shrink-0 object-contain drop-shadow sm:h-20 ${round.monsterType === 'boss' ? 'sm:h-[108px]' : ''} ${monsterMood === 'happy' ? 'animate-bounce' : ''}`}
           />
           <div className="relative min-w-0 flex-1">
-            <div className="absolute left-[-9px] top-1/2 -translate-y-1/2" style={{ width: 0, height: 0, borderTop: '9px solid transparent', borderBottom: '9px solid transparent', borderRight: '12px solid white' }} />
-            <div className="flex items-center gap-3 rounded-3xl bg-white px-5 py-3 shadow-md" style={{ border: '2.5px solid #7dd3fc' }}>
-              <button type="button" aria-label="唸出需求" onClick={() => speak(round.requestText, 'en-US')} className="shrink-0 text-2xl transition-transform hover:scale-110 active:scale-90">
+            <div className="absolute left-[-9px] top-1/2 hidden -translate-y-1/2 sm:block" style={{ width: 0, height: 0, borderTop: '9px solid transparent', borderBottom: '9px solid transparent', borderRight: '12px solid white' }} />
+            <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-md sm:gap-3 sm:rounded-3xl sm:px-5 sm:py-3" style={{ border: '2.5px solid #7dd3fc' }}>
+              <button type="button" aria-label="唸出需求" onClick={() => speak(round.requestText, 'en-US')} className="shrink-0 text-lg transition-transform hover:scale-110 active:scale-90 sm:text-2xl">
                 🔊
               </button>
               <div className="min-w-0">
-                <p className="font-black leading-snug text-sky-800" style={{ fontSize: '1.05rem' }}>
+                <p className="font-black leading-snug text-sky-800 text-sm sm:text-base md:text-[1.05rem]">
                   {round.requestParts.map((part, i) =>
                     part.highlight ? (
                       <span key={i} className="text-[var(--hero-red)]" style={{ fontSize: '1.3em' }}>{part.text}</span>
@@ -776,30 +837,35 @@ export default function MonsterDessertView() {
                     ),
                   )}
                 </p>
-                <p className="mt-0.5 text-xs font-normal text-zinc-400">{round.requestGlossZh}</p>
+                <p className="mt-0.5 hidden text-xs font-normal text-zinc-400 sm:block">{round.requestGlossZh}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── BOTTOM ROW ── */}
-        <div className="flex min-h-0 flex-1">
-          {/* LEFT: dessert stamp picker */}
-          <div className={`flex shrink-0 flex-col gap-1.5 overflow-y-auto border-r-2 p-2 transition-all ${phase === 'building' ? 'border-sky-300 bg-sky-50/60' : 'border-zinc-200 bg-zinc-50 opacity-40'}`} style={{ width: '22%' }}>
-            <p className="shrink-0 text-center text-[10px] font-black uppercase tracking-widest text-sky-500">Pick a Stamp</p>
+        {/* ── BOTTOM ROW — column on phones, 3-column row from `md` (iPad+) up ── */}
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          {/* LEFT: dessert stamp picker — horizontal scroll row on phones,
+              vertical list from `md` up */}
+          <div
+            className={`flex shrink-0 flex-row gap-1.5 overflow-x-auto border-b-2 p-2 transition-all md:w-[22%] md:flex-col md:overflow-y-auto md:overflow-x-visible md:border-b-0 md:border-r-2 ${
+              phase === 'building' ? 'border-sky-300 bg-sky-50/60' : 'border-zinc-200 bg-zinc-50 opacity-40'
+            }`}
+          >
+            <p className="hidden shrink-0 text-center text-[10px] font-black uppercase tracking-widest text-sky-500 md:block">Pick a Stamp</p>
             {DESSERTS.map((d) => (
               <button
                 key={d.key}
                 type="button"
                 disabled={phase !== 'building'}
                 onClick={() => { setSelectedDessert(d.key); speak(d.nameEn, 'en-US'); }}
-                className={`flex items-center gap-2 rounded-xl px-2 py-2 transition-all ${
+                className={`flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 transition-all md:flex-row md:gap-2 md:px-2 md:py-2 ${
                   selectedDessert === d.key ? 'border-2 border-sky-400 bg-white shadow-md' : 'border-2 border-sky-200/60 bg-white/60 hover:bg-white'
                 }`}
               >
-                <span className="text-2xl">{d.emoji}</span>
-                <span className="text-xs font-black text-sky-700">{d.nameEn}</span>
-                {selectedDessert === d.key && <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-xs font-black text-white">✓</span>}
+                <span className="text-xl sm:text-2xl">{d.emoji}</span>
+                <span className="text-[10px] font-black text-sky-700 sm:text-xs">{d.nameEn}</span>
+                {selectedDessert === d.key && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-sky-500 text-[10px] font-black text-white md:ml-auto md:h-5 md:w-5 md:text-xs">✓</span>}
               </button>
             ))}
           </div>
@@ -809,7 +875,7 @@ export default function MonsterDessertView() {
               plates are added, and vertical centering would re-shift the
               whole block — including every already-placed dessert — on each
               click. Top-anchored + top padding keeps everything still. */}
-          <div className="relative flex flex-1 flex-col items-center justify-start overflow-auto bg-white p-4 pt-10">
+          <div className="relative flex flex-1 flex-col items-center justify-start overflow-auto bg-white p-2 pt-4 sm:p-4 sm:pt-10">
             {/* Feedback dialogs (wrong/perfect/party/timeout) are scoped to this
                 zone specifically — never the header, monster bubble, dessert
                 palette, or actions column — so they can't cover other info. */}
@@ -825,7 +891,7 @@ export default function MonsterDessertView() {
             {phase === 'building' && isBasic && !firstPlateFinalized && (
               <div className="flex flex-col items-center gap-3">
                 <p className="text-xs font-bold text-zinc-500">Tap the plate anywhere ({firstPlateItems.length}/{round.perPlate})</p>
-                <PlateCanvas items={firstPlateItems} dirtySpots={dirtySpots} onPointAt={handleFirstPlatePoint} sizeClass="h-56 w-56" shake={firstPlateShake} />
+                <PlateCanvas items={firstPlateItems} dirtySpots={dirtySpots} onPointAt={handleFirstPlatePoint} sizeClass="h-36 w-36 sm:h-44 sm:w-44 md:h-56 md:w-56" shake={firstPlateShake} />
                 {dirtySpots.length > 0 && (
                   <button type="button" onClick={() => setWipeMode((v) => !v)} className={`rounded-lg px-4 py-2 text-sm font-bold ${wipeMode ? 'bg-sky-400 text-white' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}>
                     🧽 Wipe (tap me, then tap the dirt)
@@ -847,7 +913,7 @@ export default function MonsterDessertView() {
                       the dessert "jumps" into place a beat late. Plain instant render
                       keeps the copied dessert exactly centered from the first frame. */}
                   {plates.map((p, pIdx) => (
-                    <PlateCanvas key={pIdx} items={p} sizeClass="h-20 w-20" />
+                    <PlateCanvas key={pIdx} items={p} sizeClass="h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20" />
                   ))}
                 </div>
               </div>
@@ -858,7 +924,7 @@ export default function MonsterDessertView() {
                 <p className="text-xs font-bold text-amber-700">🍽️ Serving table — {totalSoFar}/{round.total} total — tap any plate</p>
                 <div className="flex flex-wrap justify-center gap-3 rounded-2xl border-4 border-amber-700 bg-amber-100 p-4">
                   {plates.map((p, pIdx) => (
-                    <PlateCanvas key={pIdx} items={p} sizeClass="h-28 w-28" shake={advancedShakeIdx === pIdx} onPointAt={(x, y) => handleAdvancedPlatePoint(pIdx, x, y)} />
+                    <PlateCanvas key={pIdx} items={p} sizeClass="h-16 w-16 sm:h-20 sm:w-20 md:h-28 md:w-28" shake={advancedShakeIdx === pIdx} onPointAt={(x, y) => handleAdvancedPlatePoint(pIdx, x, y)} />
                   ))}
                 </div>
                 {mismatch && <p className="max-w-md text-center text-sm font-bold text-[var(--hero-red)]">{mismatch}</p>}
@@ -874,7 +940,7 @@ export default function MonsterDessertView() {
                 )}
                 <div className="flex flex-wrap justify-center gap-3 rounded-2xl border-4 border-amber-700 bg-amber-100 p-4">
                   {plates.map((p, pIdx) => (
-                    <PlateCanvas key={pIdx} items={p} sizeClass="h-20 w-20" />
+                    <PlateCanvas key={pIdx} items={p} sizeClass="h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20" />
                   ))}
                 </div>
                 <div className={`flex justify-center gap-3 ${countingWrongFlash ? 'stage-shake' : ''}`}>
@@ -906,52 +972,53 @@ export default function MonsterDessertView() {
             )}
           </div>
 
-          {/* RIGHT: actions + power-ups */}
-          <div className="flex shrink-0 flex-col gap-2 border-l-2 border-sky-200 bg-sky-50/40 p-2" style={{ width: '24%' }}>
+          {/* RIGHT: actions + power-ups — wraps into a compact row on phones,
+              a fixed-width vertical column from `md` (iPad+) up */}
+          <div className="flex shrink-0 flex-row flex-wrap items-start gap-2 border-t-2 p-2 md:w-[24%] md:flex-col md:flex-nowrap md:border-t-0 md:border-l-2 border-sky-200 bg-sky-50/40">
             {phase === 'building' && isBasic && !firstPlateFinalized && (
-              <button type="button" onClick={finalizeFirstPlate} disabled={!firstPlateReady} className="rounded-xl bg-[var(--hero-red)] px-3 py-3 text-sm font-black text-white shadow hover:brightness-110 disabled:opacity-40">
+              <button type="button" onClick={finalizeFirstPlate} disabled={!firstPlateReady} className="rounded-xl bg-[var(--hero-red)] px-4 py-2.5 text-xs font-black text-white shadow hover:brightness-110 disabled:opacity-40 sm:text-sm md:w-full md:py-3">
                 ✅ Done Stamping!
               </button>
             )}
             {phase === 'building' && isBasic && firstPlateFinalized && (
               <>
-                <div className="flex gap-2">
-                  <button type="button" onClick={removeLastPlate} disabled={plates.length <= 1} aria-label="Remove Plate" className="flex-1 rounded-xl bg-amber-500 py-3 text-2xl font-black text-white shadow hover:brightness-110 disabled:opacity-40">
+                <div className="flex gap-2 md:w-full">
+                  <button type="button" onClick={removeLastPlate} disabled={plates.length <= 1} aria-label="Remove Plate" className="rounded-xl bg-amber-500 px-4 py-2 text-xl font-black text-white shadow hover:brightness-110 disabled:opacity-40 sm:text-2xl md:flex-1 md:py-3">
                     −
                   </button>
-                  <button type="button" onClick={useWand} disabled={plates.length >= 10} aria-label="Copy Plate" className="flex-1 rounded-xl bg-purple-500 py-3 text-2xl font-black text-white shadow hover:brightness-110 disabled:opacity-40">
+                  <button type="button" onClick={useWand} disabled={plates.length >= 10} aria-label="Copy Plate" className="rounded-xl bg-purple-500 px-4 py-2 text-xl font-black text-white shadow hover:brightness-110 disabled:opacity-40 sm:text-2xl md:flex-1 md:py-3">
                     +
                   </button>
                 </div>
-                <p className="text-center text-[10px] font-bold text-zinc-500">🪄 Copy / Remove Plate</p>
-                <button type="button" onClick={handleReadyBasic} className="rounded-xl bg-emerald-500 px-3 py-3 text-sm font-black text-white shadow hover:brightness-110">
+                <p className="hidden text-center text-[10px] font-bold text-zinc-500 md:block md:w-full">🪄 Copy / Remove Plate</p>
+                <button type="button" onClick={handleReadyBasic} className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-white shadow hover:brightness-110 sm:text-sm md:w-full md:py-3">
                   ✅ Ready! Serve!
                 </button>
-                <button type="button" onClick={redesignFirstPlate} className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-200">
+                <button type="button" onClick={redesignFirstPlate} className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-200 md:w-full">
                   🔄 Redo First Plate
                 </button>
               </>
             )}
             {phase === 'building' && !isBasic && (
-              <button type="button" onClick={handleReadyAdvanced} className="rounded-xl bg-emerald-500 px-3 py-3 text-sm font-black text-white shadow hover:brightness-110">
+              <button type="button" onClick={handleReadyAdvanced} className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-white shadow hover:brightness-110 sm:text-sm md:w-full md:py-3">
                 ✅ Ready! Serve!
               </button>
             )}
 
             {phase === 'building' && (
-              <div className="mt-1 flex flex-col gap-2 border-t-2 border-sky-200 pt-2">
-                <button type="button" onClick={handleFreeze} disabled={freezeUsesLeft <= 0} className="rounded-xl bg-sky-100 px-3 py-2 text-xs font-bold text-sky-700 hover:bg-sky-200 disabled:opacity-40">
-                  🧊 Freeze Potion ×{freezeUsesLeft}
+              <div className="flex gap-2 md:mt-1 md:w-full md:flex-col md:border-t-2 md:border-sky-200 md:pt-2">
+                <button type="button" onClick={handleFreeze} disabled={freezeUsesLeft <= 0} className="rounded-xl bg-sky-100 px-3 py-2 text-xs font-bold text-sky-700 hover:bg-sky-200 disabled:opacity-40 md:w-full">
+                  🧊 Freeze ×{freezeUsesLeft}
                 </button>
-                <button type="button" onClick={handleAutoStamp} disabled={autoStampUsesLeft <= 0} className="rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-200 disabled:opacity-40">
+                <button type="button" onClick={handleAutoStamp} disabled={autoStampUsesLeft <= 0} className="rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-200 disabled:opacity-40 md:w-full">
                   ✨ Auto Stamp ×{autoStampUsesLeft}
                 </button>
               </div>
             )}
 
-            <div className="mt-auto rounded-xl bg-white/70 px-3 py-2 text-center">
+            <div className="rounded-xl bg-white/70 px-3 py-2 text-center md:mt-auto md:w-full">
               <p className="text-[10px] font-black uppercase tracking-wide text-amber-600">Timer</p>
-              <p className={`text-2xl font-black ${urgent ? 'animate-pulse text-[var(--hero-red)]' : 'text-zinc-700'}`}>{freezeFlash ? '❄️' : `${secsLeft}s`}</p>
+              <p className={`text-xl font-black sm:text-2xl ${urgent ? 'animate-pulse text-[var(--hero-red)]' : 'text-zinc-700'}`}>{freezeFlash ? '❄️' : `${secsLeft}s`}</p>
             </div>
           </div>
         </div>
