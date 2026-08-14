@@ -222,7 +222,7 @@ function generateRound(maxFactor: number, stage: DifficultyStage, monsterType: M
     if (stage === 2) { mode = 'basic'; responseType = 'equation'; }
     else if (stage === 3) { mode = 'advanced'; responseType = 'count'; }
     else { mode = 'basic'; responseType = 'count'; }
-    timeLimitSec = mode === 'advanced' ? 30 : 20;
+    timeLimitSec = 30;
   }
 
   const total = plates * perPlate;
@@ -423,7 +423,9 @@ export default function MonsterDessertView() {
   const [partyModeActive, setPartyModeActive] = useState(false);
   const [banner, setBanner] = useState<{ text: string; key: number } | null>(null);
   const [monsterMood, setMonsterMood] = useState<'idle' | 'happy' | 'sad'>('idle');
-  const [equationInfo, setEquationInfo] = useState<{ perPlateCounts: number[]; total: number; coins: number } | null>(null);
+  const [equationInfo, setEquationInfo] = useState<{ perPlateCounts: number[]; perPlate: number; plateCount: number; total: number; coins: number; dessertNameZh: string } | null>(null);
+  const [equationStep, setEquationStep] = useState(0);
+  const equationTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
@@ -688,13 +690,28 @@ export default function MonsterDessertView() {
     }
 
     const perPlateCounts = finalPlates.map((p) => p.length);
-    setEquationInfo({ perPlateCounts, total: round.total, coins });
-    const allEqual = perPlateCounts.every((c) => c === perPlateCounts[0]);
-    const spoken = allEqual
-      ? `${perPlateCounts.join('加')}，等於 ${perPlateCounts.length} 乘 ${perPlateCounts[0]}，答案都是 ${round.total}！`
-      : `${perPlateCounts.join('加')}，等於 ${round.total}！`;
-    speak(spoken, 'zh-TW');
+    const dessertNameZh = DESSERT_NAME_ZH[round.targetDessert];
+    setEquationInfo({ perPlateCounts, perPlate: round.perPlate, plateCount: finalPlates.length, total: round.total, coins, dessertNameZh });
     setPhase('equation');
+
+    equationTimersRef.current.forEach(clearTimeout);
+    equationTimersRef.current = [];
+    const allEqual = perPlateCounts.every((c) => c === perPlateCounts[0]);
+    if (allEqual) {
+      setEquationStep(1);
+      speak(`每盤 ${perPlateCounts[0]} 個${dessertNameZh}，總共 ${perPlateCounts.length} 盤。`, 'zh-TW');
+      equationTimersRef.current.push(setTimeout(() => {
+        setEquationStep(2);
+        speak(`${dessertNameZh}的數量是 ${perPlateCounts.join('加')}。`, 'zh-TW');
+      }, 2200));
+      equationTimersRef.current.push(setTimeout(() => {
+        setEquationStep(3);
+        speak(`也可以用 ${perPlateCounts[0]} 乘 ${perPlateCounts.length} 表示，答案是 ${round.total} 個！`, 'zh-TW');
+      }, 4400));
+    } else {
+      setEquationStep(3);
+      speak(`${perPlateCounts.join('加')}，等於 ${round.total}！`, 'zh-TW');
+    }
 
     if (round.monsterType === 'boss') {
       if ((round.bossStage ?? 1) < 3) {
@@ -709,6 +726,8 @@ export default function MonsterDessertView() {
   }
 
   function handleNextCustomer() {
+    equationTimersRef.current.forEach(clearTimeout);
+    equationTimersRef.current = [];
     setBanner(null);
     loadNextRound();
   }
@@ -954,17 +973,31 @@ export default function MonsterDessertView() {
             )}
 
             {phase === 'equation' && equationInfo && (
-              <div className="pop-in flex flex-col items-center gap-2 text-center">
+              <div className="flex flex-col items-center gap-2 text-center">
                 <p className="text-sm font-bold text-zinc-500">Yum! The monster is happy!</p>
-                <p className="text-2xl font-black text-zinc-900">{equationInfo.perPlateCounts.join(' + ')}</p>
                 {equationInfo.perPlateCounts.every((c) => c === equationInfo.perPlateCounts[0]) ? (
-                  <p className="text-3xl font-black text-sky-600">
-                    = {equationInfo.perPlateCounts.length} × {equationInfo.perPlateCounts[0]} = {equationInfo.total}
-                  </p>
+                  <>
+                    {equationStep >= 1 && (
+                      <p className="pop-in text-sm font-bold text-zinc-600">
+                        每盤 {equationInfo.perPlate} 個{equationInfo.dessertNameZh}，總共 {equationInfo.plateCount} 盤
+                      </p>
+                    )}
+                    {equationStep >= 2 && (
+                      <p className="pop-in text-2xl font-black text-zinc-900">{equationInfo.perPlateCounts.join(' + ')}</p>
+                    )}
+                    {equationStep >= 3 && (
+                      <p className="pop-in text-3xl font-black text-sky-600">
+                        = {equationInfo.perPlate} × {equationInfo.plateCount} = {equationInfo.total}
+                      </p>
+                    )}
+                  </>
                 ) : (
-                  <p className="text-3xl font-black text-sky-600">= {equationInfo.total}</p>
+                  <>
+                    <p className="pop-in text-2xl font-black text-zinc-900">{equationInfo.perPlateCounts.join(' + ')}</p>
+                    <p className="pop-in text-3xl font-black text-sky-600">= {equationInfo.total}</p>
+                  </>
                 )}
-                <p className="text-sm font-bold text-amber-600">🪙 +{equationInfo.coins} coins!</p>
+                {equationStep >= 3 && <p className="pop-in text-sm font-bold text-amber-600">🪙 +{equationInfo.coins} coins!</p>}
                 <button type="button" onClick={handleNextCustomer} className="mt-2 rounded-full bg-sky-500 px-6 py-2 text-sm font-black text-white shadow hover:brightness-110">
                   Next Customer →
                 </button>
