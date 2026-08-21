@@ -1,5 +1,18 @@
 # 部署紀錄
 
+## 2026-08-21 — 2315382 (v2.9.2)
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **單字庫補充**：新增 21 個 Sharon 上課提到、原本單字庫沒有的單字
+  - R 連音（fr/dr/pr/gr）：friends、freezer、fries、frown、drip、drums、grapes、present、prince
+  - 短母音：mat（短母音 A）、met／led（短母音 E）、pen（短母音 E，動物圍欄的意思，跟原本「筆」的 pen 分開建卡）、cubs（短母音 U）
+  - 其他自然發音分類：cricket（CK）、meet（EE）、bark（R控母音 AR）、blocks（L連音 BL）
+  - 重要單字庫（名詞類）：homework、laundry、pizza
+- 之後補充單字統一優先放自然發音庫（words.ts），避免同一個字兩邊都建一筆造成本週單字重複顯示
+
 ## 2026-08-14 — e49a909 (v2.9.1)
 
 **網址**：https://phonics-flashcard.vercel.app
