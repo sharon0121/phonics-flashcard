@@ -87,8 +87,8 @@ export default function FlashCard({
         ) : (
           <>
             <div className="text-6xl">{word.emoji}</div>
-            <div className="text-2xl font-bold">
-              <ZhuyinText zh={word.zh} zhuyin={word.zhuyin} />
+            <div className="w-full text-center text-2xl font-bold">
+              <ZhuyinText zh={word.zh} zhuyin={word.zhuyin} className="zhuyin-word-wrap" />
             </div>
             <SpeakButton text={word.zh} lang="zh-TW" className="mt-1" />
           </>

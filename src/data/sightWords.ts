@@ -1,4 +1,5 @@
 import type { Word } from '@/lib/types';
+import { words as phonicsWords } from './words';
 
 // ---------------------------------------------------------------------------
 // Sight Words（Dolch 視覺字表）— 6 個階段，共 314 字
@@ -348,7 +349,7 @@ const nouns: Word[] = [
   { id: 'sw-nn-wood', word: 'wood', kk: '/wʊd/', zh: '木頭', zhuyin: 'ㄇㄨˋ ㄊㄡˊ', en: 'material that comes from trees', sentence: 'The chair is made of wood.', emoji: '🪵', phase: 6, phaseLabel: NN, subPhase: NN, subPhaseKey: 'nouns', category: 'noun', highlight: '' },
 ];
 
-export const sightWords: Word[] = [
+const _allSightWords: Word[] = [
   ...prePrimer,
   ...primer,
   ...firstGrade,
@@ -356,6 +357,11 @@ export const sightWords: Word[] = [
   ...thirdGrade,
   ...nouns,
 ];
+
+// Remove words whose spelling already exists in the phonics word list so each
+// English word appears only once across the entire flashcard system.
+const _phonicsWordSet = new Set(phonicsWords.map(w => w.word.toLowerCase()));
+export const sightWords: Word[] = _allSightWords.filter(w => !_phonicsWordSet.has(w.word.toLowerCase()));
 
 export const sightWordStages = [
   { stage: 1, stageLabel: PP },
@@ -370,6 +376,8 @@ export function getSightWordsByStage(stage: number): Word[] {
   return sightWords.filter((w) => w.phase === stage);
 }
 
+// Uses the full unfiltered list so progress/curriculum data keyed by sight-word
+// ID can still be resolved even for words that were deduplicated from display.
 export function getSightWordById(id: string): Word | undefined {
-  return sightWords.find((w) => w.id === id);
+  return _allSightWords.find((w) => w.id === id);
 }

@@ -110,6 +110,14 @@ body {
   align-items: flex-start;
 }
 
+/* Used on FlashCard back face so long Chinese text wraps inside the card */
+.zhuyin-word.zhuyin-word-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
+
 .zhuyin-char {
   display: inline-flex;
   align-items: flex-start;
