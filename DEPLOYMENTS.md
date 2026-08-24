@@ -1,6 +1,6 @@
 # 部署紀錄
 
-## 2026-08-23 — 待補部署ID
+## 2026-08-24 — dpl_B3doibxuZxVjziGGw9Zw311PRYNN
 
 **網址**：https://phonics-flashcard.vercel.app
 
