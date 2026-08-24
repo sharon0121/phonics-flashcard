@@ -363,13 +363,12 @@ export function calcChainScore(
   puyosCleared: number,
   colorCount: number,
   groupBonus: number
-): { score: number; nuisance: number } {
+): { score: number } {
   const chainMult = getChainMultiplier(chain);
   const colorBonus = COLOR_BONUS[Math.min(colorCount, 5)] ?? 0;
   const bonus = Math.max(1, chainMult + colorBonus + groupBonus);
   const score = 10 * puyosCleared * bonus;
-  const nuisance = Math.floor(score / 70);
-  return { score, nuisance };
+  return { score };
 }
 
 export function addGarbageLines(grid: Grid, lines: number): Grid {

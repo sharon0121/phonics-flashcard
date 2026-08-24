@@ -11,6 +11,75 @@ import {
   hardDrop, getGhost, lockPiece, clearLines, detectTSpin, calcClearScore,
   addGarbage, advancePiece, activateHold, calcLevel, gravityInterval,
 } from '@/lib/tetris';
+import { playCollectSound, playErrorSound, playChainPopSound, playCelebrationChime, playGarbageWarningSound } from '@/lib/sound';
+import { useTetrisQuizWords } from '@/lib/tetrisSettings';
+import { useSpeechRate, SPEECH_RATE_VALUES } from '@/lib/heroClimbSettings';
+import ZhuyinText from '@/components/ZhuyinText';
+import type { Word } from '@/lib/types';
+
+// Every this many milliseconds of actual play, a vocabulary quiz interrupts
+// the game — 3 correct answers in a row (out of 3 choices) resumes it.
+// Mirrors the same mechanic in the Puyo game (src/app/games/puyo/PuyoView.tsx).
+const QUIZ_INTERVAL_MS = 120000;
+const QUIZ_STREAK_TARGET = 3;
+
+function speak(text: string, rate: number) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'en-US';
+  utterance.rate = rate;
+  window.speechSynthesis.speak(utterance);
+}
+
+function speakZh(text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'zh-TW';
+  utterance.rate = 0.9;
+  window.speechSynthesis.speak(utterance);
+}
+
+interface QuizQuestion {
+  word: Word;
+  choices: Word[];
+}
+
+interface QuizState {
+  question: QuizQuestion;
+  streak: number;
+  feedback: 'correct' | 'wrong' | null;
+  selectedId: string | null;
+}
+
+interface ClearParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+  life: number;
+  maxLife: number;
+  size: number;
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function buildQuizQuestion(pool: Word[]): QuizQuestion | null {
+  if (pool.length === 0) return null;
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  const distractorSrc = pool.filter((w) => w.id !== word.id);
+  const distractors = shuffleArray(distractorSrc).slice(0, 2);
+  const choices = shuffleArray([word, ...distractors]);
+  return { word, choices };
+}
 
 // ── Canvas layout ─────────────────────────────────────────────────────────────
 const CELL = 28;
@@ -56,6 +125,7 @@ interface LiveState {
   clearAnim: { rows: number[]; start: number } | null;
   tspinAnim: { text: string; start: number } | null;
   flashAnim: { start: number } | null; // garbage flash
+  playTimeMs: number; // accumulated actual play time, drives the vocabulary quiz
 }
 
 // ── Helper: draw a single Tetris cell (with highlight) ────────────────────────
@@ -118,8 +188,36 @@ export default function TetrisView() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const liveRef = useRef<LiveState | null>(null);
   const rafRef = useRef<number>(0);
+  // Clear-pop particles and the garbage-landing screen shake (mirrors the
+  // same effects in the Puyo game).
+  const particlesRef = useRef<ClearParticle[]>([]);
+  const shakeRef = useRef<{ start: number; duration: number; magnitude: number } | null>(null);
   const [overlay, setOverlay] = useState<'none' | 'over' | 'paused'>('none');
   const [topScore, setTopScore] = useState(0);
+
+  // ── Vocabulary quiz ──────────────────────────────────────────────────────
+  const [quiz, setQuiz] = useState<QuizState | null>(null);
+  // Set synchronously (not via the `quiz` state, which updates a render
+  // later) so the game loop never double-triggers a quiz right as one
+  // begins/ends.
+  const quizActiveRef = useRef(false);
+  const quizWords = useTetrisQuizWords();
+  const quizWordsRef = useRef<Word[]>(quizWords);
+  useEffect(() => {
+    quizWordsRef.current = quizWords;
+  }, [quizWords]);
+  const speechRate = SPEECH_RATE_VALUES[useSpeechRate()];
+
+  // Declared before gameLoop (which calls it) — only pauses/opens the quiz,
+  // doesn't need to reference gameLoop itself (resuming does, see below).
+  const triggerQuiz = useCallback(() => {
+    const question = buildQuizQuestion(quizWordsRef.current);
+    if (!question) return;
+    quizActiveRef.current = true;
+    const live = liveRef.current;
+    if (live) live.gs = { ...live.gs, phase: 'paused' };
+    setQuiz({ question, streak: 0, feedback: null, selectedId: null });
+  }, []);
 
   // ── drawFrame ────────────────────────────────────────────────────────────────
   const drawFrame = useCallback((now: number) => {
@@ -131,6 +229,35 @@ export default function TetrisView() {
 
     const { gs } = live;
     const { board, current, hold, nextQueue } = gs;
+
+    // Garbage-landing shake decay — must reset (via restore) at the end of
+    // this function so the translate never accumulates frame over frame.
+    let shakeX = 0;
+    let shakeY = 0;
+    if (shakeRef.current) {
+      const elapsed = now - shakeRef.current.start;
+      if (elapsed >= shakeRef.current.duration) {
+        shakeRef.current = null;
+      } else {
+        const t = 1 - elapsed / shakeRef.current.duration;
+        const mag = shakeRef.current.magnitude * t;
+        shakeX = (Math.random() * 2 - 1) * mag;
+        shakeY = (Math.random() * 2 - 1) * mag;
+      }
+    }
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
+    // Clear-pop particle physics
+    if (particlesRef.current.length > 0) {
+      particlesRef.current = particlesRef.current.filter((p) => {
+        p.life -= 16;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05;
+        return p.life > 0;
+      });
+    }
 
     // Background
     ctx.fillStyle = BG;
@@ -259,6 +386,17 @@ export default function TetrisView() {
       }
     }
 
+    // Clear-pop particles
+    for (const p of particlesRef.current) {
+      const a = Math.max(0, p.life / p.maxLife);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
     // Board border
     ctx.strokeStyle = BORDER;
     ctx.lineWidth = 2;
@@ -314,6 +452,8 @@ export default function TetrisView() {
       ctx.fillStyle = '#c62828';
       ctx.fillRect(BX - 6, BY + BOARD_H - barH, 4, barH);
     }
+
+    ctx.restore();
   }, []);
 
   // ── Game logic: lock piece, clear lines, score, advance ───────────────────
@@ -330,9 +470,36 @@ export default function TetrisView() {
     // Clear lines
     const { board: clearedBoard, linesCleared, clearedRows } = clearLines(board);
 
-    // Trigger clear animation
+    // Trigger clear animation + sound + particle burst (colored from the
+    // pre-clear board, since clearedBoard has already removed those cells)
     if (linesCleared > 0) {
       live.clearAnim = { rows: clearedRows, start: now };
+      for (const r of clearedRows) {
+        for (let c = 0; c < COLS; c++) {
+          const cellColor = board[r][c];
+          if (!cellColor) continue;
+          const [cx, cy] = boardToCanvas(r, c);
+          const px = cx + CELL / 2;
+          const py = cy + CELL / 2;
+          for (let i = 0; i < 3; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1.5 + Math.random() * 2.5;
+            particlesRef.current.push({
+              x: px,
+              y: py,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed - 1.5,
+              color: cellColor,
+              life: 400 + Math.random() * 200,
+              maxLife: 600,
+              size: 2 + Math.random() * 2,
+            });
+          }
+        }
+      }
+      if (particlesRef.current.length > 300) {
+        particlesRef.current = particlesRef.current.slice(-300);
+      }
     }
 
     // Calculate score
@@ -341,9 +508,18 @@ export default function TetrisView() {
     const newLines = gs.lines + linesCleared;
     const newLevel = calcLevel(newLines);
 
-    // Show T-spin / clear announcement
+    // Show T-spin / clear announcement + sound — a Tetris (4 lines) or any
+    // scoring T-spin gets the bigger celebration chime, everything else pops
+    // with a pitch that rises with lines cleared.
     if (result.description) {
       live.tspinAnim = { text: result.description.toUpperCase(), start: now };
+    }
+    if (linesCleared > 0) {
+      if (linesCleared >= 4 || tSpin !== null) {
+        playCelebrationChime();
+      } else {
+        playChainPopSound(linesCleared);
+      }
     }
 
     // Add incoming garbage (if no cancellation)
@@ -352,6 +528,8 @@ export default function TetrisView() {
     if (netGarbage > 0) {
       finalBoard = addGarbage(finalBoard, netGarbage);
       live.flashAnim = { start: now };
+      shakeRef.current = { start: now, duration: 350, magnitude: 6 };
+      playGarbageWarningSound();
     }
 
     // Advance to next piece
@@ -408,6 +586,17 @@ export default function TetrisView() {
 
     const dt = Math.min(now - live.lastTime, 100); // cap delta to 100ms
     live.lastTime = now;
+
+    // Vocabulary quiz timer — only ticks during actual gameplay
+    if (!quizActiveRef.current) {
+      live.playTimeMs += dt;
+      if (live.playTimeMs >= QUIZ_INTERVAL_MS) {
+        live.playTimeMs = 0;
+        triggerQuiz();
+        drawFrame(now);
+        return; // resuming after 3 correct explicitly restarts the RAF chain
+      }
+    }
 
     const currentGravity = live.softDrop
       ? SOFT_DROP_INTERVAL
@@ -468,7 +657,55 @@ export default function TetrisView() {
 
     drawFrame(now);
     rafRef.current = requestAnimationFrame(gameLoop);
-  }, [drawFrame, lockAndAdvance]);
+  }, [drawFrame, lockAndAdvance, triggerQuiz]);
+
+  // Not wrapped in useCallback — reads `quiz` straight from the closure so
+  // it's always current, and the sound/speech side effects run exactly once
+  // per click (a setQuiz updater function can run twice under StrictMode).
+  function answerQuiz(choice: Word) {
+    if (!quiz || quiz.feedback) return;
+    const correct = choice.id === quiz.question.word.id;
+    if (correct) {
+      playCollectSound();
+    } else {
+      playErrorSound();
+    }
+    setTimeout(() => speakZh(quiz.question.word.zh), 350);
+    setQuiz({ ...quiz, feedback: correct ? 'correct' : 'wrong', selectedId: choice.id });
+  }
+
+  // Speak the English word aloud whenever a fresh question is shown.
+  useEffect(() => {
+    if (!quiz || quiz.feedback) return;
+    const t = setTimeout(() => speak(quiz.question.word.word, speechRate), 200);
+    return () => clearTimeout(t);
+  }, [quiz, speechRate]);
+
+  // After a brief moment showing right/wrong feedback, either advance to the
+  // next question or (3 correct in a row) resume the game.
+  useEffect(() => {
+    if (!quiz?.feedback) return;
+    const wasCorrect = quiz.feedback === 'correct';
+    const t = setTimeout(() => {
+      setQuiz((prev) => {
+        if (!prev) return prev;
+        const nextStreak = wasCorrect ? prev.streak + 1 : 0;
+        const nextQuestion = nextStreak >= QUIZ_STREAK_TARGET ? null : buildQuizQuestion(quizWordsRef.current);
+        if (!nextQuestion) {
+          quizActiveRef.current = false;
+          const live = liveRef.current;
+          if (live) {
+            live.gs = { ...live.gs, phase: 'playing' };
+            live.lastTime = performance.now();
+            rafRef.current = requestAnimationFrame(gameLoop);
+          }
+          return null;
+        }
+        return { question: nextQuestion, streak: nextStreak, feedback: null, selectedId: null };
+      });
+    }, 1100);
+    return () => clearTimeout(t);
+  }, [quiz?.feedback, gameLoop]);
 
   // ── Input: single move/rotate action ─────────────────────────────────────
   const doMove = useCallback((dcol: number) => {
@@ -523,6 +760,7 @@ export default function TetrisView() {
   // ── Keyboard handling ────────────────────────────────────────────────────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (quizActiveRef.current) return;
       const live = liveRef.current;
       if (!live) return;
 
@@ -608,6 +846,99 @@ export default function TetrisView() {
     };
   }, [doMove, doRotate, doHardDrop, doHold, gameLoop]);
 
+  // ── Touch / mobile controls (same gesture scheme as the Puyo game) ───────
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const _canvas = canvas;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressFired = false;
+    const SWIPE_THRESHOLD = 30;
+    const TAP_THRESHOLD = 250;
+    const LONG_PRESS_MS = 450;
+    const LONG_PRESS_MOVE_TOLERANCE = 12;
+
+    function clearLongPressTimer() {
+      if (longPressTimer !== null) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      if (quizActiveRef.current || liveRef.current?.gs.phase !== 'playing') return;
+      e.preventDefault();
+      const t = e.touches[0];
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+      touchStartTime = Date.now();
+      longPressFired = false;
+      clearLongPressTimer();
+      // Holding still (not swiping) for a moment = hard drop, so an
+      // accidental swipe-down (easy to mis-trigger) is never needed.
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        doHardDrop();
+      }, LONG_PRESS_MS);
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      const t = e.touches[0];
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+      if (Math.abs(dx) > LONG_PRESS_MOVE_TOLERANCE || Math.abs(dy) > LONG_PRESS_MOVE_TOLERANCE) {
+        clearLongPressTimer();
+      }
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      clearLongPressTimer();
+      if (longPressFired) return;
+      if (quizActiveRef.current || liveRef.current?.gs.phase !== 'playing') return;
+      e.preventDefault();
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+      const elapsed = Date.now() - touchStartTime;
+
+      if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal swipe = move
+        doMove(dx > 0 ? 1 : -1);
+        return;
+      }
+
+      // Tap = rotate (left half of board = CCW, right half = CW)
+      if (elapsed < TAP_THRESHOLD && Math.abs(dx) < 15 && Math.abs(dy) < 15) {
+        const rect = _canvas.getBoundingClientRect();
+        const tapX = t.clientX - rect.left;
+        const boardMid = BX + BOARD_W / 2;
+        const scaleX = _canvas.width / rect.width;
+        const scaledTapX = tapX * scaleX;
+        doRotate(scaledTapX < boardMid ? -1 : 1);
+      }
+    }
+
+    function onTouchCancel() {
+      clearLongPressTimer();
+    }
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onTouchCancel);
+    return () => {
+      clearLongPressTimer();
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchCancel);
+    };
+  }, [doMove, doRotate, doHardDrop]);
+
   // ── Start / Restart ───────────────────────────────────────────────────────
   const startGame = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -627,8 +958,11 @@ export default function TetrisView() {
       clearAnim: null,
       tspinAnim: null,
       flashAnim: null,
+      playTimeMs: 0,
     };
     setOverlay('none');
+    quizActiveRef.current = false;
+    setQuiz(null);
     rafRef.current = requestAnimationFrame(gameLoop);
   }, [gameLoop]);
 
@@ -639,7 +973,7 @@ export default function TetrisView() {
 
   return (
     <div
-      className="flex min-h-screen flex-col items-center justify-center"
+      className="flex min-h-screen flex-col items-center justify-center px-2"
       style={{ background: 'var(--background)' }}
     >
       {/* Header */}
@@ -654,19 +988,26 @@ export default function TetrisView() {
           Back
         </Link>
         <span className="text-sm font-bold text-[var(--hero-gold)]">🟦 Tetris</span>
-        <div className="text-xs text-zinc-400">
-          ↑/X=CW &nbsp; Z=CCW &nbsp; C=Hold &nbsp; Space=Drop
+        <div className="flex items-center gap-2 text-xs text-zinc-400">
+          <span className="hidden sm:inline">↑/X=CW &nbsp; Z=CCW &nbsp; C=Hold &nbsp; Space=Drop</span>
+          <Link
+            href="/games/tetris/settings"
+            aria-label="遊戲設定"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-base text-zinc-200 hover:bg-white/20"
+          >
+            ⚙️
+          </Link>
         </div>
       </div>
 
       {/* Canvas wrapper */}
-      <div className="relative">
+      <div className="relative w-full" style={{ maxWidth: CANVAS_W }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_W}
           height={CANVAS_H}
-          className="rounded-xl"
-          style={{ imageRendering: 'pixelated' }}
+          className="block h-auto w-full rounded-xl"
+          style={{ imageRendering: 'pixelated', touchAction: 'none' }}
         />
 
         {/* Paused overlay */}
@@ -707,6 +1048,58 @@ export default function TetrisView() {
             >
               Play Again
             </button>
+          </div>
+        )}
+
+        {/* Vocabulary quiz overlay */}
+        {quiz && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl bg-black/90 p-4">
+            <div className="text-xs font-bold text-zinc-400">📚 單字小測驗</div>
+            <div className="flex items-center gap-2">
+              {Array.from({ length: QUIZ_STREAK_TARGET }, (_, i) => (
+                <span
+                  key={i}
+                  className="text-3xl transition-all duration-300"
+                  style={{
+                    opacity: i < quiz.streak ? 1 : 0.25,
+                    filter: i < quiz.streak ? 'none' : 'grayscale(1)',
+                    transform: i < quiz.streak ? 'scale(1.15)' : 'scale(1)',
+                  }}
+                >
+                  💎
+                </span>
+              ))}
+            </div>
+            <div className="text-xs text-zinc-400">集滿 {QUIZ_STREAK_TARGET} 顆寶石才能繼續遊戲</div>
+            <div className="mt-1 text-3xl font-black text-[var(--hero-gold)]">
+              {quiz.question.word.emoji} {quiz.question.word.word}
+            </div>
+            {quiz.question.word.kk && <div className="text-sm text-zinc-400">{quiz.question.word.kk}</div>}
+            <div className="mt-1 flex w-full max-w-xs flex-col gap-2">
+              {quiz.question.choices.map((choice) => {
+                const isSelected = quiz.selectedId === choice.id;
+                const isCorrectChoice = choice.id === quiz.question.word.id;
+                const showFeedback = quiz.feedback !== null;
+                let bg = 'rgba(255,255,255,0.08)';
+                if (showFeedback && isSelected) {
+                  bg = quiz.feedback === 'correct' ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)';
+                } else if (showFeedback && isCorrectChoice) {
+                  bg = 'rgba(34,197,94,0.2)';
+                }
+                return (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    disabled={showFeedback}
+                    onClick={() => answerQuiz(choice)}
+                    className="flex min-h-[68px] items-center justify-center rounded-lg px-4 py-2 text-xl text-white"
+                    style={{ background: bg, border: '1px solid rgba(255,255,255,0.15)' }}
+                  >
+                    <ZhuyinText zh={choice.zh} zhuyin={choice.zhuyin} className="zhuyin-word-wrap" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

@@ -169,6 +169,57 @@ export function playExplosionSound(): void {
   osc.stop(now + 0.32);
 }
 
+// A satisfying "pop" that pitches up with the chain count — bigger chains
+// sound more exciting.
+export function playChainPopSound(chain: number = 1): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const baseFreq = 420 + Math.min(chain - 1, 8) * 85;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(baseFreq, now);
+  osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + 0.1);
+  gain.gain.setValueAtTime(0.16, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.18);
+}
+
+// A low, ominous double-thud "warning" for a row of garbage puyo landing.
+export function playGarbageWarningSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(180, now);
+  osc1.frequency.exponentialRampToValueAtTime(70, now + 0.4);
+  gain1.gain.setValueAtTime(0.22, now);
+  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+  osc1.connect(gain1);
+  gain1.connect(ctx.destination);
+  osc1.start(now);
+  osc1.stop(now + 0.45);
+
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = 'sawtooth';
+  osc2.frequency.setValueAtTime(90, now + 0.15);
+  osc2.frequency.exponentialRampToValueAtTime(40, now + 0.55);
+  gain2.gain.setValueAtTime(0.2, now + 0.15);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  osc2.connect(gain2);
+  gain2.connect(ctx.destination);
+  osc2.start(now + 0.15);
+  osc2.stop(now + 0.6);
+}
+
 // A quick descending "thud" for falling down a floor of the ladder.
 export function playFallSound(): void {
   const ctx = getAudioContext();
