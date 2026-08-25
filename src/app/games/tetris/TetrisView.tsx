@@ -745,6 +745,57 @@ export default function TetrisView() {
     lockAndAdvance(live, Date.now());
   }, [lockAndAdvance]);
 
+  // On-screen touch buttons for move-left/move-right — mirrors the
+  // ArrowLeft/ArrowRight keydown/keyup DAS bookkeeping exactly, so holding a
+  // button repeats the same way holding the arrow key does.
+  const pressMoveLeft = useCallback(() => {
+    if (quizActiveRef.current) return;
+    const live = liveRef.current;
+    if (!live || live.gs.phase !== 'playing') return;
+    if (!live.leftHeld) {
+      live.leftHeld = true;
+      live.dasDir = -1;
+      live.dasStart = performance.now();
+      live.arrAccum = 0;
+      doMove(-1);
+    }
+  }, [doMove]);
+
+  const releaseMoveLeft = useCallback(() => {
+    const live = liveRef.current;
+    if (!live) return;
+    live.leftHeld = false;
+    if (live.dasDir === -1) {
+      live.dasDir = live.rightHeld ? 1 : 0;
+      live.dasStart = performance.now();
+      live.arrAccum = 0;
+    }
+  }, []);
+
+  const pressMoveRight = useCallback(() => {
+    if (quizActiveRef.current) return;
+    const live = liveRef.current;
+    if (!live || live.gs.phase !== 'playing') return;
+    if (!live.rightHeld) {
+      live.rightHeld = true;
+      live.dasDir = 1;
+      live.dasStart = performance.now();
+      live.arrAccum = 0;
+      doMove(1);
+    }
+  }, [doMove]);
+
+  const releaseMoveRight = useCallback(() => {
+    const live = liveRef.current;
+    if (!live) return;
+    live.rightHeld = false;
+    if (live.dasDir === 1) {
+      live.dasDir = live.leftHeld ? -1 : 0;
+      live.dasStart = performance.now();
+      live.arrAccum = 0;
+    }
+  }, []);
+
   const doHold = useCallback(() => {
     const live = liveRef.current;
     if (!live || live.gs.phase !== 'playing') return;
@@ -1000,8 +1051,41 @@ export default function TetrisView() {
         </div>
       </div>
 
+      {/* Board + on-screen touch controls: left buttons — board — right buttons */}
+      <div className="flex w-full items-center justify-center gap-1 sm:gap-3 md:gap-4">
+        {/* Left side: hard drop (top) + move left (bottom) — move-left and
+            move-right sit at the same height as each other. */}
+        <div className="flex shrink-0 flex-col items-center gap-1.5 sm:gap-3">
+          <button
+            type="button"
+            aria-label="快速下降"
+            onClick={doHardDrop}
+            className="flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white/10 text-white select-none hover:bg-white/20 active:scale-90 active:bg-white/25 sm:h-16 sm:w-16 md:h-20 md:w-20"
+            style={{ touchAction: 'none' }}
+          >
+            <span className="text-lg sm:text-3xl md:text-4xl">⏬</span>
+            <span className="hidden text-xs font-bold sm:block">下降</span>
+          </button>
+          <button
+            type="button"
+            aria-label="往左移動"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              pressMoveLeft();
+            }}
+            onPointerUp={releaseMoveLeft}
+            onPointerLeave={releaseMoveLeft}
+            onPointerCancel={releaseMoveLeft}
+            className="flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white/10 text-white select-none hover:bg-white/20 active:scale-90 active:bg-white/25 sm:h-16 sm:w-16 md:h-20 md:w-20"
+            style={{ touchAction: 'none' }}
+          >
+            <span className="text-lg sm:text-3xl md:text-4xl">⬅️</span>
+            <span className="hidden text-xs font-bold sm:block">左</span>
+          </button>
+        </div>
+
       {/* Canvas wrapper */}
-      <div className="relative w-full" style={{ maxWidth: CANVAS_W }}>
+      <div className="relative min-w-0 flex-1" style={{ maxWidth: CANVAS_W }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_W}
@@ -1102,6 +1186,37 @@ export default function TetrisView() {
             </div>
           </div>
         )}
+      </div>
+
+        {/* Right side: rotate (top) + move right (bottom) */}
+        <div className="flex shrink-0 flex-col items-center gap-1.5 sm:gap-3">
+          <button
+            type="button"
+            aria-label="旋轉方塊"
+            onClick={() => doRotate(1)}
+            className="flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white/10 text-white select-none hover:bg-white/20 active:scale-90 active:bg-white/25 sm:h-16 sm:w-16 md:h-20 md:w-20"
+            style={{ touchAction: 'none' }}
+          >
+            <span className="text-lg sm:text-3xl md:text-4xl">🔄</span>
+            <span className="hidden text-xs font-bold sm:block">旋轉</span>
+          </button>
+          <button
+            type="button"
+            aria-label="往右移動"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              pressMoveRight();
+            }}
+            onPointerUp={releaseMoveRight}
+            onPointerLeave={releaseMoveRight}
+            onPointerCancel={releaseMoveRight}
+            className="flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white/10 text-white select-none hover:bg-white/20 active:scale-90 active:bg-white/25 sm:h-16 sm:w-16 md:h-20 md:w-20"
+            style={{ touchAction: 'none' }}
+          >
+            <span className="text-lg sm:text-3xl md:text-4xl">➡️</span>
+            <span className="hidden text-xs font-bold sm:block">右</span>
+          </button>
+        </div>
       </div>
 
       <p className="mt-3 text-xs text-zinc-500">P / Esc = Pause</p>

@@ -65,9 +65,12 @@ const BOARD_Y = 30;
 const DAS = 133;
 const ARR = 100;
 
+const DROP_INTERVAL_MS = 500;
+const LOCK_DELAY_MS = 300;
+
 // Stall penalty: place this many pieces in a row with no actual clear and a
 // line of garbage queues up — rewards staying active, doesn't punish big chains.
-const PIECES_BEFORE_GARBAGE = 2;
+const PIECES_BEFORE_GARBAGE = 4;
 
 // Every this many milliseconds of actual play (paused/quiz time doesn't
 // count), a vocabulary quiz interrupts the game.
@@ -911,7 +914,7 @@ export default function PuyoView() {
         clearTimeout(lockTimerRef.current);
         lockTimerRef.current = null;
         gameRef.current = { ...gameRef.current, phase: 'locking' };
-        lockTimerRef.current = window.setTimeout(() => lockCurrent(), 300);
+        lockTimerRef.current = window.setTimeout(() => lockCurrent(), LOCK_DELAY_MS);
       }
     },
     [lockCurrent]
@@ -1046,7 +1049,7 @@ export default function PuyoView() {
         }
 
         // Gravity
-        const dropInterval = softDropRef.current ? 80 : 500;
+        const dropInterval = softDropRef.current ? 80 : DROP_INTERVAL_MS;
         if (time - lastDropRef.current >= dropInterval) {
           lastDropRef.current = time;
           const dropped = dropPair(gameRef.current.grid, gameRef.current.current!);
@@ -1054,7 +1057,7 @@ export default function PuyoView() {
             // Hit bottom: start lock timer
             if (lockTimerRef.current === null) {
               gameRef.current = { ...gameRef.current, phase: 'locking' };
-              lockTimerRef.current = window.setTimeout(() => lockCurrent(), 300);
+              lockTimerRef.current = window.setTimeout(() => lockCurrent(), LOCK_DELAY_MS);
             }
           } else {
             gameRef.current = { ...gameRef.current, current: dropped };
@@ -1333,8 +1336,20 @@ export default function PuyoView() {
 
       {/* Board + on-screen touch controls: left buttons — board — right buttons */}
       <div className="flex w-full max-w-3xl items-center justify-center gap-1 sm:gap-3 md:gap-4">
-        {/* Left side: move left (top) + hard drop (bottom) */}
+        {/* Left side: hard drop (top) + move left (bottom) — move-left and
+            move-right sit at the same height as each other for intuitive
+            left/right symmetry. */}
         <div className="flex shrink-0 flex-col items-center gap-1.5 sm:gap-3">
+          <button
+            type="button"
+            aria-label="快速下降"
+            onClick={hardDrop}
+            className="flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white/10 text-white select-none hover:bg-white/20 active:scale-90 active:bg-white/25 sm:h-16 sm:w-16 md:h-20 md:w-20"
+            style={{ touchAction: 'none' }}
+          >
+            <span className="text-lg sm:text-3xl md:text-4xl">⏬</span>
+            <span className="hidden text-xs font-bold sm:block">下降</span>
+          </button>
           <button
             type="button"
             aria-label="往左移動"
@@ -1350,16 +1365,6 @@ export default function PuyoView() {
           >
             <span className="text-lg sm:text-3xl md:text-4xl">⬅️</span>
             <span className="hidden text-xs font-bold sm:block">左</span>
-          </button>
-          <button
-            type="button"
-            aria-label="快速下降"
-            onClick={hardDrop}
-            className="flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white/10 text-white select-none hover:bg-white/20 active:scale-90 active:bg-white/25 sm:h-16 sm:w-16 md:h-20 md:w-20"
-            style={{ touchAction: 'none' }}
-          >
-            <span className="text-lg sm:text-3xl md:text-4xl">⏬</span>
-            <span className="hidden text-xs font-bold sm:block">下降</span>
           </button>
         </div>
 
