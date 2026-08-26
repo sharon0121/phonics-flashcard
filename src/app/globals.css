@@ -588,3 +588,64 @@ body {
   animation: klotski-confetti-fall 1.6s ease-in forwards;
 }
 
+/* ------------------------------------------------------------------ */
+/* 積木消除：消除粒子噴發 + 連消文字彈出 + 貓爪收集漂浮字                          */
+/* ------------------------------------------------------------------ */
+
+@keyframes bp-particle-fly {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--bp-tx)), calc(-50% + var(--bp-ty))) scale(0.3);
+  }
+}
+.bp-particle {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  animation: bp-particle-fly 0.55s ease-out forwards;
+}
+
+@keyframes bp-callout-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.3);
+  }
+}
+.bp-callout {
+  position: absolute;
+  pointer-events: none;
+  animation: bp-callout-pop 0.7s ease-out forwards;
+}
+
+@keyframes bp-collect-float {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -160%) scale(1.15);
+  }
+}
+.bp-collect-float {
+  position: absolute;
+  pointer-events: none;
+  animation: bp-collect-float 0.8s ease-out forwards;
+}
+

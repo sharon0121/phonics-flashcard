@@ -75,7 +75,7 @@ const PIECES_BEFORE_GARBAGE = 4;
 // Every this many milliseconds of actual play (paused/quiz time doesn't
 // count), a vocabulary quiz interrupts the game.
 const QUIZ_INTERVAL_MS = 120000;
-const QUIZ_STREAK_TARGET = 3;
+const QUIZ_STREAK_TARGET = 5;
 
 interface ClearParticle {
   x: number;

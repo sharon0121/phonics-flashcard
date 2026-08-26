@@ -48,7 +48,7 @@ export default function TetrisSettingsView() {
             </button>
           </div>
           <p className="mt-1 text-xs text-zinc-400">
-            每玩 2 分鐘會暫停一次，考一題單字（英文選中文＋注音），答對三題連續才能繼續玩。考題只會從下方勾選的來源抽字；預設只用「本週單字」，可複選。
+            每玩 2 分鐘會暫停一次，考一題單字（英文選中文＋注音），答對五題連續才能繼續玩。考題只會從下方勾選的來源抽字；預設只用「本週單字」，可複選。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {WORD_SOURCE_DISPLAY_ORDER.map((key) => {

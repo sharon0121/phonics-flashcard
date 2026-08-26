@@ -11,20 +11,28 @@ import {
   type WordSourceKey,
 } from './heroClimbSettings';
 import { useCustomWords } from './customWords';
+import { BLOCK_THEMES, type ThemeId } from './blockPuzzleThemes';
 
 export { WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES };
 export type { WordSourceKey };
 
 const WORD_SOURCES_KEY = 'blockpuzzle_word_sources';
 const BEST_SCORE_KEY = 'blockpuzzle_best_score';
+const LIFETIME_COLLECTED_KEY = 'blockpuzzle_lifetime_collected';
+const THEME_KEY = 'blockpuzzle_theme';
 // Defaults to just this week's curriculum words, matching Puyo/Tetris's quiz.
 const DEFAULT_WORD_SOURCES: WordSourceKey[] = ['thisWeek'];
+const DEFAULT_THEME: ThemeId = 'candy';
 
 const listeners = new Set<() => void>();
 let cachedSourcesRaw: string | null = null;
 let cachedSources: WordSourceKey[] = DEFAULT_WORD_SOURCES;
 let cachedBestRaw: string | null = null;
 let cachedBest = 0;
+let cachedLifetimeRaw: string | null = null;
+let cachedLifetime = 0;
+let cachedThemeRaw: string | null = null;
+let cachedTheme: ThemeId = DEFAULT_THEME;
 
 function readWordSources(): WordSourceKey[] {
   const raw = localStorage.getItem(WORD_SOURCES_KEY);
@@ -89,6 +97,48 @@ export function reportBlockPuzzleScore(score: number): void {
     localStorage.setItem(BEST_SCORE_KEY, String(score));
     notify();
   }
+}
+
+// Total paw-print collectibles ever cleared, across every run — this is
+// what theme unlocks are gated on (BLOCK_THEMES[].unlockAt), separate from
+// the per-run 0/25 progress bar which resets after each goal completion.
+function readLifetimeCollected(): number {
+  const raw = localStorage.getItem(LIFETIME_COLLECTED_KEY);
+  if (raw === cachedLifetimeRaw) return cachedLifetime;
+  cachedLifetimeRaw = raw;
+  const parsed = raw == null ? 0 : Number(raw);
+  cachedLifetime = Number.isFinite(parsed) ? parsed : 0;
+  return cachedLifetime;
+}
+
+export function useLifetimeCollected(): number {
+  return useSyncExternalStore(subscribe, readLifetimeCollected, () => 0);
+}
+
+export function addLifetimeCollected(n: number): void {
+  if (typeof window === 'undefined' || n <= 0) return;
+  const next = readLifetimeCollected() + n;
+  localStorage.setItem(LIFETIME_COLLECTED_KEY, String(next));
+  notify();
+}
+
+function readTheme(): ThemeId {
+  const raw = localStorage.getItem(THEME_KEY);
+  if (raw === cachedThemeRaw) return cachedTheme;
+  cachedThemeRaw = raw;
+  const validIds = BLOCK_THEMES.map((t) => t.id);
+  cachedTheme = validIds.includes(raw as ThemeId) ? (raw as ThemeId) : DEFAULT_THEME;
+  return cachedTheme;
+}
+
+export function useBlockPuzzleTheme(): ThemeId {
+  return useSyncExternalStore(subscribe, readTheme, () => DEFAULT_THEME);
+}
+
+export function setBlockPuzzleTheme(id: ThemeId): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(THEME_KEY, id);
+  notify();
 }
 
 // Combined word pool for the 2-minute vocabulary quiz — same fallback logic

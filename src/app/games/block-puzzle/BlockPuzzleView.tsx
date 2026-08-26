@@ -17,17 +17,100 @@ import {
   type Piece,
   type Shape,
 } from '@/lib/blockpuzzle';
-import { useBlockPuzzleBestScore, reportBlockPuzzleScore, useBlockPuzzleQuizWords } from '@/lib/blockPuzzleSettings';
+import {
+  useBlockPuzzleBestScore,
+  reportBlockPuzzleScore,
+  useBlockPuzzleQuizWords,
+  useLifetimeCollected,
+  addLifetimeCollected,
+  useBlockPuzzleTheme,
+  setBlockPuzzleTheme,
+} from '@/lib/blockPuzzleSettings';
+import { BLOCK_THEMES, getTheme, isThemeUnlocked, type BlockTheme } from '@/lib/blockPuzzleThemes';
 import { useSpeechRate, SPEECH_RATE_VALUES } from '@/lib/heroClimbSettings';
-import { playCollectSound, playErrorSound, playChainPopSound, playCelebrationChime } from '@/lib/sound';
+import {
+  playCollectSound,
+  playErrorSound,
+  playChainPopSound,
+  playCelebrationChime,
+  playDingSound,
+} from '@/lib/sound';
 import ZhuyinText from '@/components/ZhuyinText';
 import type { Word } from '@/lib/types';
 
 const GOAL = 25;
 const BOARD_MAX_PX = 420;
+// "Normal" size used only while a piece is actively being dragged — idle
+// tray pieces are shrunk to fit their slot instead (see trayFitCellPx),
+// which is what actually keeps big shapes from overlapping their neighbors.
 const TRAY_CELL_PX = 30;
+const TRAY_SLOT_PX = 76; // usable interior of one tray slot, in px
 const QUIZ_INTERVAL_MS = 120000;
-const QUIZ_STREAK_TARGET = 3;
+const QUIZ_STREAK_TARGET = 5;
+
+// Scale each piece's own cell size down so its full bounding box always fits
+// inside one tray slot, regardless of shape — a 1x5 line or 3x3 square no
+// longer spills into the neighboring slot the way a fixed cell size did.
+function trayFitCellPx(shape: Shape): number {
+  const { rows, cols } = shapeSize(shape);
+  const maxDim = Math.max(rows, cols);
+  return Math.min(TRAY_CELL_PX, Math.floor(TRAY_SLOT_PX / maxDim));
+}
+
+// ── Theme-aware cell rendering ──────────────────────────────────────────────
+function shadeHex(hex: string, percent: number): string {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r0 = (num >> 16) & 0xff;
+  const g0 = (num >> 8) & 0xff;
+  const b0 = num & 0xff;
+  const r = percent >= 0 ? r0 + (255 - r0) * percent : r0 * (1 + percent);
+  const g = percent >= 0 ? g0 + (255 - g0) * percent : g0 * (1 + percent);
+  const b = percent >= 0 ? b0 + (255 - b0) * percent : b0 * (1 + percent);
+  return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+}
+
+function cellVisualStyle(theme: BlockTheme, colorIndex: number): { background: string; boxShadow: string } {
+  const hex = theme.colors[colorIndex] ?? '#888888';
+  if (theme.style === 'glossy') {
+    return {
+      background: `linear-gradient(135deg, ${shadeHex(hex, 0.4)}, ${hex} 55%, ${shadeHex(hex, -0.25)})`,
+      boxShadow: 'inset 2px 2px 3px rgba(255,255,255,0.55), inset -2px -2px 4px rgba(0,0,0,0.35)',
+    };
+  }
+  return {
+    background: hex,
+    boxShadow: 'inset 2px 2px 3px rgba(255,255,255,0.35), inset -2px -2px 3px rgba(0,0,0,0.3)',
+  };
+}
+
+// Paw prints always render as 🐾 regardless of theme (it's the universal
+// "collect me" marker) — theme emojis only decorate ordinary cells.
+function cellEmoji(theme: BlockTheme, colorIndex: number, special: boolean): string | null {
+  if (special) return '🐾';
+  if (theme.style === 'emoji' && theme.emojis) return theme.emojis[colorIndex] ?? null;
+  return null;
+}
+
+interface ClearParticle {
+  id: number;
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  color: string;
+  size: number;
+}
+
+interface CollectFloat {
+  id: number;
+  x: number;
+  y: number;
+}
+
+interface ClearCallout {
+  id: number;
+  text: string;
+}
 
 function speak(text: string, rate: number) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -56,6 +139,19 @@ interface QuizState {
   streak: number;
   feedback: 'correct' | 'wrong' | null;
   selectedId: string | null;
+}
+
+// Module-level (not nested in the component) so the Math.random() calls
+// inside don't trip the "impure call during render" lint rule — same
+// reasoning as shuffleArray/buildQuizQuestion just below.
+function randomParticleOffset(distMin: number, distMax: number): { tx: number; ty: number } {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = distMin + Math.random() * (distMax - distMin);
+  return { tx: Math.cos(angle) * dist, ty: Math.sin(angle) * dist };
+}
+
+function randomParticleSize(min: number, max: number): number {
+  return min + Math.random() * (max - min);
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -89,41 +185,48 @@ interface DragState {
 
 function ShapePreview({
   shape,
-  color,
+  colorIndex,
+  theme,
   specialCellIndex,
   cellPx,
 }: {
   shape: Shape;
-  color: string;
+  colorIndex: number;
+  theme: BlockTheme;
   specialCellIndex: number | null;
   cellPx: number;
 }) {
   const { rows, cols } = shapeSize(shape);
+  const visual = cellVisualStyle(theme, colorIndex);
   return (
     <div style={{ position: 'relative', width: cols * cellPx, height: rows * cellPx }}>
-      {shape.map(([r, c], i) => (
-        <div
-          key={i}
-          className="flex items-center justify-center rounded-[5px]"
-          style={{
-            position: 'absolute',
-            left: c * cellPx,
-            top: r * cellPx,
-            width: cellPx - 3,
-            height: cellPx - 3,
-            background: color,
-            boxShadow: 'inset 2px 2px 3px rgba(255,255,255,0.4), inset -2px -2px 3px rgba(0,0,0,0.35)',
-          }}
-        >
-          {i === specialCellIndex && <span style={{ fontSize: cellPx * 0.55 }}>🐾</span>}
-        </div>
-      ))}
+      {shape.map(([r, c], i) => {
+        const special = i === specialCellIndex;
+        const emoji = cellEmoji(theme, colorIndex, special);
+        return (
+          <div
+            key={i}
+            className="flex items-center justify-center rounded-[5px]"
+            style={{
+              position: 'absolute',
+              left: c * cellPx,
+              top: r * cellPx,
+              width: cellPx - 3,
+              height: cellPx - 3,
+              ...visual,
+            }}
+          >
+            {emoji && <span style={{ fontSize: cellPx * 0.55 }}>{emoji}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 export default function BlockPuzzleView() {
   const boardRef = useRef<HTMLDivElement>(null);
+  const playAreaRef = useRef<HTMLDivElement>(null);
   const [board, setBoard] = useState<Board>(() => createEmptyBoard());
   const [tray, setTray] = useState<(Piece | null)[]>(() => {
     const b = createEmptyBoard();
@@ -142,6 +245,23 @@ export default function BlockPuzzleView() {
   const draggingRef = useRef<DragState | null>(null);
   const [gameOver, setGameOver] = useState(false);
   const [paused, setPaused] = useState(false);
+
+  // ── Themes (unlocked by lifetime paw-print collection) ────────────────────
+  const lifetimeCollected = useLifetimeCollected();
+  const themeId = useBlockPuzzleTheme();
+  const theme = getTheme(themeId);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+
+  // ── Clear effects: particle bursts, DOUBLE!/TRIPLE! callouts, collect floats
+  const [particles, setParticles] = useState<ClearParticle[]>([]);
+  const [collectFloats, setCollectFloats] = useState<CollectFloat[]>([]);
+  const [callout, setCallout] = useState<ClearCallout | null>(null);
+  const [shaking, setShaking] = useState(false);
+  const effectIdRef = useRef(0);
+  function nextEffectId() {
+    effectIdRef.current += 1;
+    return effectIdRef.current;
+  }
 
   const scoreRef = useRef(score);
   useEffect(() => {
@@ -243,8 +363,79 @@ export default function BlockPuzzleView() {
     }
   }
 
+  // Spawns particle bursts, DOUBLE!/TRIPLE!/MEGA CLEAR! callouts, board
+  // shake, and paw-collection floats — purely cosmetic, reads DOM rects at
+  // call time so it must run after the cleared cells are still on screen.
+  function spawnClearEffects(
+    clearedCells: { row: number; col: number; colorIndex: number }[],
+    specialCollectedCells: { row: number; col: number }[],
+    linesCleared: number
+  ) {
+    const boardEl = boardRef.current;
+    const areaEl = playAreaRef.current;
+    if (!boardEl || !areaEl) return;
+    const boardRect = boardEl.getBoundingClientRect();
+    const areaRect = areaEl.getBoundingClientRect();
+    const cellW = boardRect.width / GRID_SIZE;
+    const cellH = boardRect.height / GRID_SIZE;
+    const originX = boardRect.left - areaRect.left;
+    const originY = boardRect.top - areaRect.top;
+
+    // Cap particle count for very large multi-line clears — sample evenly
+    // instead of spawning one burst per cell.
+    const sampled =
+      clearedCells.length > 24
+        ? clearedCells.filter((_, i) => i % Math.ceil(clearedCells.length / 24) === 0)
+        : clearedCells;
+    const newParticles: ClearParticle[] = [];
+    for (const cell of sampled) {
+      const cx = originX + (cell.col + 0.5) * cellW;
+      const cy = originY + (cell.row + 0.5) * cellH;
+      const hex = theme.colors[cell.colorIndex] ?? '#ffcc33';
+      for (let i = 0; i < 2; i++) {
+        const { tx, ty } = randomParticleOffset(24, 54);
+        newParticles.push({
+          id: nextEffectId(),
+          x: cx,
+          y: cy,
+          tx,
+          ty,
+          color: hex,
+          size: randomParticleSize(3, 6),
+        });
+      }
+    }
+    if (newParticles.length > 0) {
+      setParticles((prev) => [...prev, ...newParticles]);
+      const ids = new Set(newParticles.map((p) => p.id));
+      setTimeout(() => setParticles((prev) => prev.filter((p) => !ids.has(p.id))), 600);
+    }
+
+    if (linesCleared >= 2) {
+      const text = linesCleared >= 4 ? 'MEGA CLEAR!' : linesCleared === 3 ? 'TRIPLE!' : 'DOUBLE!';
+      const id = nextEffectId();
+      setCallout({ id, text });
+      setTimeout(() => setCallout((cur) => (cur?.id === id ? null : cur)), 750);
+
+      setShaking(true);
+      setTimeout(() => setShaking(false), 420);
+    }
+
+    if (specialCollectedCells.length > 0) {
+      playDingSound();
+      const floats: CollectFloat[] = specialCollectedCells.map((cell) => ({
+        id: nextEffectId(),
+        x: originX + (cell.col + 0.5) * cellW,
+        y: originY + (cell.row + 0.5) * cellH,
+      }));
+      setCollectFloats((prev) => [...prev, ...floats]);
+      const ids = new Set(floats.map((f) => f.id));
+      setTimeout(() => setCollectFloats((prev) => prev.filter((f) => !ids.has(f.id))), 850);
+    }
+  }
+
   function commitPlacement(piece: Piece, trayIndex: number, originRow: number, originCol: number) {
-    const placedBoard = placeShape(board, piece.shape, originRow, originCol, piece.color, piece.specialCellIndex);
+    const placedBoard = placeShape(board, piece.shape, originRow, originCol, piece.colorIndex, piece.specialCellIndex);
     const nextTray = tray.map((p, i) => (i === trayIndex ? null : p));
     const clearInfo = findAndClearLines(placedBoard);
     const linesCleared = clearInfo.rowsCleared.length + clearInfo.colsCleared.length;
@@ -261,6 +452,7 @@ export default function BlockPuzzleView() {
       setFlashCells(flashKeys);
       const newCombo = combo + 1;
       setCombo(newCombo);
+      spawnClearEffects(clearInfo.clearedCells, clearInfo.specialCollectedCells, linesCleared);
       if (linesCleared >= 2) playCelebrationChime();
       else playChainPopSound(linesCleared);
 
@@ -270,6 +462,7 @@ export default function BlockPuzzleView() {
         setScore((s) => s + bonus);
         setFlashCells(new Set());
         if (clearInfo.specialCollected > 0) {
+          addLifetimeCollected(clearInfo.specialCollected);
           setCollected((prev) => {
             const next = prev + clearInfo.specialCollected;
             if (next >= GOAL) {
@@ -376,6 +569,17 @@ export default function BlockPuzzleView() {
           🧱 積木消除
         </span>
         <div className="flex items-center gap-2">
+          {!gameOver && quiz === null && (
+            <button
+              type="button"
+              onClick={() => setThemePickerOpen(true)}
+              title="積木主題"
+              aria-label="積木主題"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-base text-zinc-200 hover:bg-white/20"
+            >
+              🎨
+            </button>
+          )}
           <Link
             href="/games/block-puzzle/settings"
             aria-label="遊戲設定"
@@ -398,7 +602,11 @@ export default function BlockPuzzleView() {
       </div>
 
       {/* Play area */}
-      <div className="relative flex w-full flex-col items-center gap-3" style={{ maxWidth: BOARD_MAX_PX }}>
+      <div
+        ref={playAreaRef}
+        className="relative flex w-full flex-col items-center gap-3"
+        style={{ maxWidth: BOARD_MAX_PX }}
+      >
         {/* Score row */}
         <div className="flex w-full items-center justify-between gap-3">
           <div
@@ -434,7 +642,7 @@ export default function BlockPuzzleView() {
         {/* Board */}
         <div
           ref={boardRef}
-          className="grid w-full rounded-lg"
+          className={`grid w-full rounded-lg ${shaking ? 'stage-shake' : ''}`}
           style={{
             gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
             gap: '3px',
@@ -450,25 +658,25 @@ export default function BlockPuzzleView() {
               const key = `${r},${c}`;
               const flashing = flashCells.has(key);
               const inPreview = previewCells.has(key);
+              const visual = cell.filled ? cellVisualStyle(theme, cell.colorIndex) : null;
+              const emoji = cell.filled ? cellEmoji(theme, cell.colorIndex, cell.special) : null;
               return (
                 <div
                   key={key}
                   className="relative rounded-[5px] transition-transform duration-200"
                   style={{
-                    background: cell.filled ? cell.color : 'rgba(255,255,255,0.05)',
-                    boxShadow: cell.filled
-                      ? 'inset 2px 2px 3px rgba(255,255,255,0.35), inset -2px -2px 3px rgba(0,0,0,0.3)'
-                      : undefined,
+                    background: visual ? visual.background : 'rgba(255,255,255,0.05)',
+                    boxShadow: visual ? visual.boxShadow : undefined,
                     transform: flashing ? 'scale(1.15)' : 'scale(1)',
                     opacity: flashing ? 0.4 : 1,
                   }}
                 >
-                  {cell.special && (
+                  {emoji && (
                     <span
                       className="absolute inset-0 flex items-center justify-center"
                       style={{ fontSize: '60%' }}
                     >
-                      🐾
+                      {emoji}
                     </span>
                   )}
                   {inPreview && (
@@ -486,12 +694,15 @@ export default function BlockPuzzleView() {
           )}
         </div>
 
-        {/* Tray */}
-        <div className="flex w-full items-center justify-center gap-4 py-2">
+        {/* Tray — each slot shrinks its own piece to fit (trayFitCellPx), so
+            large shapes never spill into the next slot; the dragged piece
+            is rendered at full TRAY_CELL_PX size instead (see the floating
+            ghost below), i.e. it "grows back" the moment you pick it up. */}
+        <div className="flex w-full items-center justify-center gap-2 py-2 sm:gap-4">
           {tray.map((piece, i) => (
             <div
               key={piece ? piece.id : `empty-${i}`}
-              className="flex h-24 w-24 items-center justify-center rounded-xl"
+              className="flex aspect-square max-w-24 flex-1 items-center justify-center overflow-hidden rounded-xl"
               style={{
                 background: 'rgba(255,255,255,0.04)',
                 touchAction: 'none',
@@ -502,9 +713,10 @@ export default function BlockPuzzleView() {
               {piece && (
                 <ShapePreview
                   shape={piece.shape}
-                  color={piece.color}
+                  colorIndex={piece.colorIndex}
+                  theme={theme}
                   specialCellIndex={piece.specialCellIndex}
-                  cellPx={TRAY_CELL_PX}
+                  cellPx={trayFitCellPx(piece.shape)}
                 />
               )}
             </div>
@@ -613,6 +825,96 @@ export default function BlockPuzzleView() {
             </div>
           </div>
         )}
+
+        {/* Theme picker overlay */}
+        {themePickerOpen && !quiz && !gameOver && (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-lg p-4"
+            style={{ background: 'rgba(11,17,48,0.96)' }}
+          >
+            <div className="text-lg font-black" style={{ color: '#ffcc33' }}>
+              🎨 積木主題
+            </div>
+            <div className="text-xs" style={{ color: '#94a3b8' }}>
+              收集貓爪印記可以解鎖新主題（目前累積 {lifetimeCollected} 個）
+            </div>
+            <div className="grid w-full max-w-xs grid-cols-2 gap-2">
+              {BLOCK_THEMES.map((t) => {
+                const unlocked = isThemeUnlocked(t, lifetimeCollected);
+                const selected = t.id === themeId;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={!unlocked}
+                    onClick={() => setBlockPuzzleTheme(t.id)}
+                    className="flex flex-col items-center gap-1 rounded-xl px-3 py-3 text-center"
+                    style={{
+                      background: selected ? 'rgba(255,204,51,0.2)' : 'rgba(255,255,255,0.06)',
+                      border: selected ? '2px solid #ffcc33' : '2px solid rgba(255,255,255,0.12)',
+                      opacity: unlocked ? 1 : 0.45,
+                    }}
+                  >
+                    <span className="text-2xl">{t.icon}</span>
+                    <span className="text-xs font-bold text-white">{t.name}</span>
+                    <span className="text-[10px]" style={{ color: '#94a3b8' }}>
+                      {unlocked ? (selected ? '使用中' : '點擊使用') : `集滿 ${t.unlockAt} 個解鎖`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setThemePickerOpen(false)}
+              className="mt-1 rounded-full px-6 py-2 text-sm font-bold text-zinc-900"
+              style={{ background: '#ffcc33' }}
+            >
+              關閉
+            </button>
+          </div>
+        )}
+
+        {/* Clear-pop particles */}
+        {particles.map((p) => (
+          <span
+            key={p.id}
+            className="bp-particle"
+            style={
+              {
+                left: p.x,
+                top: p.y,
+                width: p.size,
+                height: p.size,
+                background: p.color,
+                '--bp-tx': `${p.tx}px`,
+                '--bp-ty': `${p.ty}px`,
+              } as React.CSSProperties
+            }
+          />
+        ))}
+
+        {/* DOUBLE! / TRIPLE! / MEGA CLEAR! callout */}
+        {callout && (
+          <div
+            key={callout.id}
+            className="bp-callout text-2xl font-black sm:text-3xl"
+            style={{ left: '50%', top: '45%', color: '#ffcc33', textShadow: '0 2px 6px rgba(0,0,0,0.6)' }}
+          >
+            {callout.text}
+          </div>
+        )}
+
+        {/* Paw-collect "+1" floats */}
+        {collectFloats.map((f) => (
+          <div
+            key={f.id}
+            className="bp-collect-float text-sm font-black"
+            style={{ left: f.x, top: f.y, color: '#4ade80' }}
+          >
+            🐾 +1
+          </div>
+        ))}
       </div>
 
       {/* Floating drag ghost */}
@@ -630,7 +932,8 @@ export default function BlockPuzzleView() {
         >
           <ShapePreview
             shape={dragging.piece.shape}
-            color={dragging.piece.color}
+            colorIndex={dragging.piece.colorIndex}
+            theme={theme}
             specialCellIndex={dragging.piece.specialCellIndex}
             cellPx={TRAY_CELL_PX * 1.3}
           />

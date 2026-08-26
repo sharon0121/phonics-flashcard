@@ -21,7 +21,7 @@ import type { Word } from '@/lib/types';
 // the game — 3 correct answers in a row (out of 3 choices) resumes it.
 // Mirrors the same mechanic in the Puyo game (src/app/games/puyo/PuyoView.tsx).
 const QUIZ_INTERVAL_MS = 120000;
-const QUIZ_STREAK_TARGET = 3;
+const QUIZ_STREAK_TARGET = 5;
 
 function speak(text: string, rate: number) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;

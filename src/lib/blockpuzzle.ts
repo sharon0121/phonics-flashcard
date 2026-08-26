@@ -6,20 +6,26 @@ export type Shape = [number, number][]; // [row, col] offsets, normalized to min
 
 export interface BoardCell {
   filled: boolean;
-  color: string;
+  // Index into the active theme's color palette (see blockPuzzleThemes.ts),
+  // not a literal color — this is what lets a theme swap re-skin every cell
+  // already on the board instantly, with no data migration.
+  colorIndex: number;
   special: boolean;
 }
 
 export type Board = BoardCell[][];
 
-export const PIECE_COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#ef4444', '#a855f7', '#06b6d4'];
+// Palette size only — the actual hex colors live per-theme in
+// blockPuzzleThemes.ts. Kept here because piece generation needs to know how
+// many indices exist.
+export const PALETTE_SIZE = 6;
 
 // Chance a freshly generated piece carries one collectible ("paw print") cell.
 const SPECIAL_CHANCE = 0.15;
 
 export function createEmptyBoard(): Board {
   return Array.from({ length: GRID_SIZE }, () =>
-    Array.from({ length: GRID_SIZE }, () => ({ filled: false, color: '', special: false }))
+    Array.from({ length: GRID_SIZE }, () => ({ filled: false, colorIndex: -1, special: false }))
   );
 }
 
@@ -53,16 +59,22 @@ export function placeShape(
   shape: Shape,
   originRow: number,
   originCol: number,
-  color: string,
+  colorIndex: number,
   specialCellIndex: number | null
 ): Board {
   const next = board.map((row) => row.map((cell) => ({ ...cell })));
   shape.forEach(([dr, dc], i) => {
     const r = originRow + dr;
     const c = originCol + dc;
-    next[r][c] = { filled: true, color, special: i === specialCellIndex };
+    next[r][c] = { filled: true, colorIndex, special: i === specialCellIndex };
   });
   return next;
+}
+
+export interface ClearedCell {
+  row: number;
+  col: number;
+  colorIndex: number;
 }
 
 export interface ClearResult {
@@ -70,6 +82,11 @@ export interface ClearResult {
   rowsCleared: number[];
   colsCleared: number[];
   specialCollected: number;
+  // Exact board position of every collected special cell, for placing a
+  // "+1" float effect precisely; and every cleared cell in general, for
+  // spawning clear-burst particles at the right spot.
+  specialCollectedCells: { row: number; col: number }[];
+  clearedCells: ClearedCell[];
 }
 
 export function findAndClearLines(board: Board): ClearResult {
@@ -82,21 +99,27 @@ export function findAndClearLines(board: Board): ClearResult {
     if (board.every((row) => row[c].filled)) colsCleared.push(c);
   }
   if (rowsCleared.length === 0 && colsCleared.length === 0) {
-    return { board, rowsCleared, colsCleared, specialCollected: 0 };
+    return { board, rowsCleared, colsCleared, specialCollected: 0, specialCollectedCells: [], clearedCells: [] };
   }
 
   let specialCollected = 0;
+  const specialCollectedCells: { row: number; col: number }[] = [];
+  const clearedCells: ClearedCell[] = [];
   const next = board.map((row, r) =>
     row.map((cell, c) => {
       const cleared = rowsCleared.includes(r) || colsCleared.includes(c);
       if (cleared && cell.filled) {
-        if (cell.special) specialCollected++;
-        return { filled: false, color: '', special: false };
+        clearedCells.push({ row: r, col: c, colorIndex: cell.colorIndex });
+        if (cell.special) {
+          specialCollected++;
+          specialCollectedCells.push({ row: r, col: c });
+        }
+        return { filled: false, colorIndex: -1, special: false };
       }
       return cell;
     })
   );
-  return { board: next, rowsCleared, colsCleared, specialCollected };
+  return { board: next, rowsCleared, colsCleared, specialCollected, specialCollectedCells, clearedCells };
 }
 
 export function countEmpty(board: Board): number {
@@ -194,16 +217,16 @@ function pickWeightedShape(emptyCount: number): Shape {
 export interface Piece {
   id: string;
   shape: Shape;
-  color: string;
+  colorIndex: number;
   specialCellIndex: number | null;
 }
 
 export function generatePiece(board: Board): Piece {
   const emptyCount = countEmpty(board);
   const shape = pickWeightedShape(emptyCount);
-  const color = PIECE_COLORS[Math.floor(Math.random() * PIECE_COLORS.length)];
+  const colorIndex = Math.floor(Math.random() * PALETTE_SIZE);
   const specialCellIndex = Math.random() < SPECIAL_CHANCE ? Math.floor(Math.random() * shape.length) : null;
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, shape, color, specialCellIndex };
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, shape, colorIndex, specialCellIndex };
 }
 
 export function isGameOver(board: Board, pieces: (Piece | null)[]): boolean {
