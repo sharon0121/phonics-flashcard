@@ -23,21 +23,45 @@ import type { Word } from '@/lib/types';
 const QUIZ_INTERVAL_MS = 120000;
 const QUIZ_STREAK_TARGET = 5;
 
-function speak(text: string, rate: number) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'en-US';
-  utterance.rate = rate;
-  window.speechSynthesis.speak(utterance);
-}
-
-function speakZh(text: string) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'zh-TW';
-  utterance.rate = 0.9;
-  window.speechSynthesis.speak(utterance);
+// Resolves once the browser actually finishes speaking (or errors) — lets
+// callers wait for the real narration length instead of guessing with a
+// fixed timeout, which was cutting the English word or the Chinese answer
+// off mid-way whenever they ran longer than the guess. Deliberately does
+// NOT call speechSynthesis.cancel(): the Web Speech API already queues a
+// speak() call made while something else is talking rather than
+// interrupting it, so as long as nothing else force-cancels mid-question,
+// the word and the answer both play out fully in order.
+function speakAsync(text: string, lang: string, rate: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(safetyTimer);
+      resolve();
+    };
+    // Safety net: a browser can silently stall speech synthesis (e.g. a
+    // backgrounded tab) and never fire onend/onerror at all, or speak()
+    // itself can throw synchronously (unsupported voice/lang) — either way
+    // the promise would hang forever without this, permanently freezing the
+    // quiz on that one question. 8s comfortably covers even a long phrase
+    // at a slow rate.
+    const safetyTimer = setTimeout(finish, 8000);
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = rate;
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      finish();
+    }
+  });
 }
 
 interface QuizQuestion {
@@ -213,6 +237,10 @@ export default function TetrisView() {
   const triggerQuiz = useCallback(() => {
     const question = buildQuizQuestion(quizWordsRef.current);
     if (!question) return;
+    // Clear any leftover gameplay speech before the quiz's own narration
+    // starts — a genuine context switch, unlike the transitions between
+    // quiz questions below which must NOT cancel each other.
+    if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
     quizActiveRef.current = true;
     const live = liveRef.current;
     if (live) live.gs = { ...live.gs, phase: 'paused' };
@@ -670,23 +698,37 @@ export default function TetrisView() {
     } else {
       playErrorSound();
     }
-    setTimeout(() => speakZh(quiz.question.word.zh), 350);
     setQuiz({ ...quiz, feedback: correct ? 'correct' : 'wrong', selectedId: choice.id });
   }
 
   // Speak the English word aloud whenever a fresh question is shown.
   useEffect(() => {
     if (!quiz || quiz.feedback) return;
-    const t = setTimeout(() => speak(quiz.question.word.word, speechRate), 200);
+    const t = setTimeout(() => {
+      speakAsync(quiz.question.word.word, 'en-US', speechRate);
+    }, 200);
     return () => clearTimeout(t);
   }, [quiz, speechRate]);
 
-  // After a brief moment showing right/wrong feedback, either advance to the
-  // next question or (3 correct in a row) resume the game.
+  // Waits for the Chinese answer to actually finish narrating (instead of a
+  // fixed 1100ms guess) before advancing to the next question or (5 correct
+  // in a row) resuming the game — a fixed delay was cutting the readout off
+  // mid-word whenever it ran longer than the guess.
   useEffect(() => {
     if (!quiz?.feedback) return;
+    let cancelled = false;
     const wasCorrect = quiz.feedback === 'correct';
-    const t = setTimeout(() => {
+    const zhText = quiz.question.word.zh;
+
+    async function run() {
+      await new Promise<void>((r) => setTimeout(r, 350));
+      if (cancelled) return;
+      await speakAsync(zhText, 'zh-TW', 0.9);
+      if (cancelled) return;
+      // Small buffer so the colored feedback stays visible a beat after the
+      // voice finishes, rather than vanishing the instant it stops.
+      await new Promise<void>((r) => setTimeout(r, 300));
+      if (cancelled) return;
       setQuiz((prev) => {
         if (!prev) return prev;
         const nextStreak = wasCorrect ? prev.streak + 1 : 0;
@@ -703,8 +745,12 @@ export default function TetrisView() {
         }
         return { question: nextQuestion, streak: nextStreak, feedback: null, selectedId: null };
       });
-    }, 1100);
-    return () => clearTimeout(t);
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, [quiz?.feedback, gameLoop]);
 
   // ── Input: single move/rotate action ─────────────────────────────────────
