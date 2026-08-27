@@ -1,5 +1,13 @@
 # 部署紀錄
 
+## 2026-08-27 — dpl_ADMAB7NUKZ9fLmDLQVRskhssMBXW (v2.12.1)
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **補充上課單字**：自然發音庫新增 6 個字 cheetah（CH 複合輔音）、greet/grumpy/grin/printer/princess（R 連音 gr/pr），本週單字（2026-08-24 那週）同步寫入正式站雲端資料
+
 ## 2026-08-26 — dpl_CPAo8EzasGFqnfXbVc9yXDyC7tVV (v2.12.0)
 
 **網址**：https://phonics-flashcard.vercel.app
