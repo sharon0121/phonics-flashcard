@@ -137,7 +137,7 @@ const games: GameEntry[] = [
   { href: '', emoji: '🎯', title: '軸對稱鏡像射擊', description: '線對稱幾何概念、圖形對應', ready: false },
   { href: '', emoji: '🧊', title: '3D 展開圖魔方', description: '3D 空間展開與摺疊、空間想像力', ready: false },
   { href: '', emoji: '⚖️', title: '天平秤重拼單字', description: '等式與平衡概念、基礎數學計算', ready: false },
-  { href: '/games/space-racer', emoji: '🚀', title: '邏輯數列太空賽車', description: '數字規律與邏輯、數感訓練', ready: true },
+  { href: '/games/space-racer', emoji: '🏎️', title: '邏輯數列太空賽車', description: '數字規律與邏輯、數感訓練', ready: true },
   { href: '', emoji: '🧱', title: '牆洞大比拚（磚塊補補樂）', description: '面積守恆、單位換算、輔助線分割', ready: false },
   { href: '', emoji: '🟩', title: '幾何積木拼圖大挑戰', description: '空間心智旋轉、圖形分解與組合', ready: false },
 ];

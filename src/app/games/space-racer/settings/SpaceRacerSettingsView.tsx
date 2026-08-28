@@ -2,20 +2,26 @@
 
 import Link from 'next/link';
 import {
-  useSpaceRacerStepTiers,
-  setSpaceRacerStepTiers,
-  STEP_TIER_OPTIONS,
-  type StepTier,
+  useSpaceRacerLevelCap,
+  setSpaceRacerLevelCap,
+  LEVEL_CAP_OPTIONS,
+  MAX_LEVEL,
+  useSpaceRacerWordSources,
+  setSpaceRacerWordSources,
+  WORD_SOURCE_LABELS,
+  WORD_SOURCE_DISPLAY_ORDER,
+  ALL_WORD_SOURCES,
+  type LevelCap,
+  type WordSourceKey,
 } from '@/lib/spaceRacerSettings';
 
 export default function SpaceRacerSettingsView() {
-  const stepTiers = useSpaceRacerStepTiers();
-  const sorted = [...stepTiers].sort((a, b) => a - b);
+  const levelCap = useSpaceRacerLevelCap();
+  const wordSources = useSpaceRacerWordSources();
 
-  function toggleTier(value: StepTier) {
-    const next = stepTiers.includes(value) ? stepTiers.filter((v) => v !== value) : [...stepTiers, value];
-    if (next.length === 0) return;
-    setSpaceRacerStepTiers(next);
+  function toggleSource(key: WordSourceKey) {
+    const next = wordSources.includes(key) ? wordSources.filter((k) => k !== key) : [...wordSources, key];
+    setSpaceRacerWordSources(next);
   }
 
   return (
@@ -37,13 +43,13 @@ export default function SpaceRacerSettingsView() {
         <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 太空賽車設定</h1>
 
         <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/5 p-4 text-zinc-200">
-          <h2 className="text-sm font-bold">🔢 數列規律（可複選）</h2>
+          <h2 className="text-sm font-bold">🏁 最高難度關卡</h2>
           <p className="mt-1 text-xs text-zinc-400">
-            從最小的規律開始，連續答對 10 題升一層 → 目前最高層：+{sorted[sorted.length - 1]}
+            難度會隨著玩的局數自動升級（每 5 局升一關，共 {MAX_LEVEL} 關），答錯不會被打回原本的關卡，只會停在原地繼續累積。這裡可以設定自動升級最高能升到第幾關。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {STEP_TIER_OPTIONS.map((opt) => {
-              const checked = stepTiers.includes(opt.value);
+            {LEVEL_CAP_OPTIONS.map((opt) => {
+              const checked = levelCap === opt.value;
               return (
                 <label
                   key={opt.value}
@@ -55,9 +61,10 @@ export default function SpaceRacerSettingsView() {
                   }
                 >
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="levelCap"
                     checked={checked}
-                    onChange={() => toggleTier(opt.value)}
+                    onChange={() => setSpaceRacerLevelCap(opt.value as LevelCap)}
                     className="h-4 w-4 cursor-pointer"
                   />
                   {opt.label}
@@ -65,13 +72,51 @@ export default function SpaceRacerSettingsView() {
               );
             })}
           </div>
-          {sorted.length > 1 && (
-            <p className="mt-2 text-[10px] text-zinc-500">
-              進度：{sorted.map((s, i) => `第${i + 1}層：+${s}`).join(' → ')}
-            </p>
-          )}
           <p className="mt-2 text-xs text-zinc-400">
-            看清楚上方數列的規律，開船撞向答案正確的那個門，撞錯會扣一顆心！
+            看清楚上方數列的規律，選好車道後按「衝刺」開向答案正確的那個門，撞錯或太慢都會扣一顆心！
+          </p>
+        </div>
+
+        <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/5 p-4 text-zinc-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold">📚 單字考題來源</h2>
+            <button
+              type="button"
+              onClick={() => setSpaceRacerWordSources(ALL_WORD_SOURCES)}
+              className="rounded-lg bg-white/10 px-3 py-1 text-xs font-bold hover:bg-white/20"
+            >
+              全選
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-zinc-400">
+            每玩 2 分鐘會暫停一次，考一題單字（英文選中文＋注音），答對五題連續才能繼續玩。考題只會從下方勾選的來源抽字；預設只用「本週單字」，可複選。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {WORD_SOURCE_DISPLAY_ORDER.map((key) => {
+              const checked = wordSources.includes(key);
+              return (
+                <label
+                  key={key}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold"
+                  style={
+                    checked
+                      ? { background: '#ffcc33', color: '#1a1a2e' }
+                      : { background: 'rgba(255,255,255,0.08)', color: '#e2e8f0' }
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleSource(key)}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  {WORD_SOURCE_LABELS[key]}
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs text-zinc-400">
+            如果勾選的來源加起來字數不夠出三選一，會自動改用自然發音卡＋重要單字卡的完整題庫。
           </p>
         </div>
       </div>
