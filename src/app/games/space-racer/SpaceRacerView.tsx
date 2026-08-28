@@ -3,19 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  generateSequenceRound,
+  generateRaceRound,
   effectiveLevel,
   roundTimeMsForLevel,
-  type SequenceRound,
+  type RaceRound,
   type Lane,
   gateScore,
 } from '@/lib/spaceRacer';
 import {
   useSpaceRacerLevelCap,
+  useSpaceRacerQuestionTypes,
   useSpaceRacerBestScore,
   reportSpaceRacerScore,
   useSpaceRacerQuizWords,
   type LevelCap,
+  type QuestionType,
 } from '@/lib/spaceRacerSettings';
 import { useSpeechRate, SPEECH_RATE_VALUES } from '@/lib/heroClimbSettings';
 import { playCollectSound, playCelebrationChime, playExplosionSound, playErrorSound } from '@/lib/sound';
@@ -121,7 +123,7 @@ interface Particle {
 }
 
 interface GateRow {
-  round: SequenceRound;
+  round: RaceRound;
   resolved: boolean;
 }
 
@@ -253,14 +255,12 @@ function drawFrame(ctx: CanvasRenderingContext2D, live: LiveState, now: number) 
   drawCheckerBand(ctx, CAR_BASE_Y + 34, 12);
   drawCheckerBand(ctx, GATE_Y - 14, 12);
 
-  // Sequence prompt
+  // Question prompt (sequence / arithmetic equation / emoji+Chinese word)
   if (live.row) {
-    const { sequence } = live.row.round;
-    const text = `${sequence.join(', ')}, ?`;
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffcc33';
-    ctx.fillText(text, CANVAS_W / 2, 46);
+    ctx.fillText(live.row.round.prompt, CANVAS_W / 2, 46);
   }
 
   // Countdown bar — only while the car is idle and waiting to dash
@@ -298,10 +298,14 @@ function drawFrame(ctx: CanvasRenderingContext2D, live: LiveState, now: number) 
       ctx.roundRect(gx, GATE_Y, gw, GATE_H, 10);
       ctx.fill();
       ctx.stroke();
-      ctx.font = 'bold 28px sans-serif';
+      const text = live.row.round.laneValues[lane];
+      // English words need a smaller, narrower font to fit the gate box —
+      // numbers and the arithmetic minus sign stay at the larger size.
+      const fontSize = text.length > 4 ? 16 : 28;
+      ctx.font = `bold ${fontSize}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(String(live.row.round.laneValues[lane]), gx + gw / 2, GATE_Y + GATE_H / 2 + 10);
+      ctx.fillText(text, gx + gw / 2, GATE_Y + GATE_H / 2 + fontSize / 3, gw - 8);
     }
   }
 
@@ -397,6 +401,12 @@ export default function SpaceRacerView() {
     levelCapRef.current = levelCap;
   }, [levelCap]);
 
+  const questionTypes = useSpaceRacerQuestionTypes();
+  const questionTypesRef = useRef<QuestionType[]>(questionTypes);
+  useEffect(() => {
+    questionTypesRef.current = questionTypes;
+  }, [questionTypes]);
+
   const [hud, setHud] = useState({ score: 0, lives: MAX_LIVES, combo: 0, level: 1 });
   const [canDash, setCanDash] = useState(false);
 
@@ -430,8 +440,7 @@ export default function SpaceRacerView() {
     if (!row || row.resolved) return;
     row.resolved = true;
     live.roundsPlayed += 1;
-    const chosenValue = row.round.laneValues[lane];
-    const correct = chosenValue === row.round.answer;
+    const correct = lane === row.round.correctLane;
 
     if (correct) {
       const newCombo = live.combo + 1;
@@ -453,7 +462,7 @@ export default function SpaceRacerView() {
       live.lives = Math.max(0, live.lives - 1);
       live.shakeUntil = now + 350;
       live.flash = { color: 'rgba(239,68,68,0.25)', until: now + 250 };
-      live.feedback = { text: `答案是 ${row.round.answer}`, color: '#ef4444', until: now + 900 };
+      live.feedback = { text: `答案是 ${row.round.answerLabel}`, color: '#ef4444', until: now + 900 };
       spawnBurst(live, laneCenterX(lane), CAR_DASH_Y, '#ef4444', 22);
       playExplosionSound();
     }
@@ -479,7 +488,7 @@ export default function SpaceRacerView() {
     live.lives = Math.max(0, live.lives - 1);
     live.shakeUntil = now + 350;
     live.flash = { color: 'rgba(239,68,68,0.25)', until: now + 250 };
-    live.feedback = { text: `太慢了！答案是 ${row.round.answer}`, color: '#ef4444', until: now + 900 };
+    live.feedback = { text: `太慢了！答案是 ${row.round.answerLabel}`, color: '#ef4444', until: now + 900 };
     spawnBurst(live, laneCenterX(row.round.correctLane), GATE_Y + GATE_H / 2, '#ef4444', 22);
     playExplosionSound();
 
@@ -628,7 +637,10 @@ export default function SpaceRacerView() {
         if (!live.row && live.carAnim === 'idle' && now >= live.nextRowAt) {
           const level = effectiveLevel(live.roundsPlayed, levelCapRef.current);
           live.level = level;
-          live.row = { round: generateSequenceRound(level), resolved: false };
+          live.row = {
+            round: generateRaceRound(level, questionTypesRef.current, quizWordsRef.current),
+            resolved: false,
+          };
           const duration = roundTimeMsForLevel(level);
           live.roundDuration = duration;
           live.roundDeadline = now + duration;

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { Word } from './types';
-import { LEVEL_CAP_OPTIONS, MAX_LEVEL, type LevelCap } from './spaceRacer';
+import { LEVEL_CAP_OPTIONS, MAX_LEVEL, QUESTION_TYPE_OPTIONS, type LevelCap, type QuestionType } from './spaceRacer';
 import {
   useThisWeekClimbWords,
   useReinforcementClimbWords,
@@ -13,15 +13,18 @@ import {
 } from './heroClimbSettings';
 import { useCustomWords } from './customWords';
 
-export { LEVEL_CAP_OPTIONS, MAX_LEVEL, WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES };
-export type { LevelCap, WordSourceKey };
+export { LEVEL_CAP_OPTIONS, MAX_LEVEL, QUESTION_TYPE_OPTIONS, WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES };
+export type { LevelCap, QuestionType, WordSourceKey };
 
 const LEVEL_CAP_KEY = 'space_racer_level_cap';
 const BEST_SCORE_KEY = 'space_racer_best_score';
 const WORD_SOURCES_KEY = 'space_racer_word_sources';
+const QUESTION_TYPES_KEY = 'space_racer_question_types';
 const DEFAULT_LEVEL_CAP: LevelCap = 0;
 // Defaults to just this week's curriculum words, matching Puyo/Tetris/Block Puzzle's quiz.
 const DEFAULT_WORD_SOURCES: WordSourceKey[] = ['thisWeek'];
+// Defaults to just number sequences, preserving the game's original behavior.
+const DEFAULT_QUESTION_TYPES: QuestionType[] = ['sequence'];
 
 const listeners = new Set<() => void>();
 let cachedCapRaw: string | null = null;
@@ -30,6 +33,8 @@ let cachedBestRaw: string | null = null;
 let cachedBest = 0;
 let cachedSourcesRaw: string | null = null;
 let cachedSources: WordSourceKey[] = DEFAULT_WORD_SOURCES;
+let cachedTypesRaw: string | null = null;
+let cachedTypes: QuestionType[] = DEFAULT_QUESTION_TYPES;
 
 function readLevelCap(): LevelCap {
   const raw = localStorage.getItem(LEVEL_CAP_KEY);
@@ -70,6 +75,27 @@ function readWordSources(): WordSourceKey[] {
   return cachedSources;
 }
 
+function readQuestionTypes(): QuestionType[] {
+  const raw = localStorage.getItem(QUESTION_TYPES_KEY);
+  if (raw === cachedTypesRaw) return cachedTypes;
+  cachedTypesRaw = raw;
+  if (raw == null) {
+    cachedTypes = DEFAULT_QUESTION_TYPES;
+    return cachedTypes;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const validValues = QUESTION_TYPE_OPTIONS.map((o) => o.value);
+    const valid = Array.isArray(parsed)
+      ? parsed.filter((v): v is QuestionType => validValues.includes(v as QuestionType))
+      : [];
+    cachedTypes = valid.length > 0 ? valid : DEFAULT_QUESTION_TYPES;
+  } catch {
+    cachedTypes = DEFAULT_QUESTION_TYPES;
+  }
+  return cachedTypes;
+}
+
 function subscribe(callback: () => void): () => void {
   listeners.add(callback);
   window.addEventListener('storage', callback);
@@ -103,6 +129,17 @@ export function reportSpaceRacerScore(score: number): void {
     localStorage.setItem(BEST_SCORE_KEY, String(score));
     notify();
   }
+}
+
+export function useSpaceRacerQuestionTypes(): QuestionType[] {
+  return useSyncExternalStore(subscribe, readQuestionTypes, () => DEFAULT_QUESTION_TYPES);
+}
+
+export function setSpaceRacerQuestionTypes(types: QuestionType[]): void {
+  if (typeof window === 'undefined') return;
+  const safe = types.length > 0 ? types : DEFAULT_QUESTION_TYPES;
+  localStorage.setItem(QUESTION_TYPES_KEY, JSON.stringify(safe));
+  notify();
 }
 
 export function useSpaceRacerWordSources(): WordSourceKey[] {

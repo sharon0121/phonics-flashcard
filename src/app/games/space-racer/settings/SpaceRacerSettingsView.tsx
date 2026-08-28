@@ -6,18 +6,28 @@ import {
   setSpaceRacerLevelCap,
   LEVEL_CAP_OPTIONS,
   MAX_LEVEL,
+  useSpaceRacerQuestionTypes,
+  setSpaceRacerQuestionTypes,
+  QUESTION_TYPE_OPTIONS,
   useSpaceRacerWordSources,
   setSpaceRacerWordSources,
   WORD_SOURCE_LABELS,
   WORD_SOURCE_DISPLAY_ORDER,
   ALL_WORD_SOURCES,
   type LevelCap,
+  type QuestionType,
   type WordSourceKey,
 } from '@/lib/spaceRacerSettings';
 
 export default function SpaceRacerSettingsView() {
   const levelCap = useSpaceRacerLevelCap();
+  const questionTypes = useSpaceRacerQuestionTypes();
   const wordSources = useSpaceRacerWordSources();
+
+  function toggleQuestionType(key: QuestionType) {
+    const next = questionTypes.includes(key) ? questionTypes.filter((k) => k !== key) : [...questionTypes, key];
+    setSpaceRacerQuestionTypes(next);
+  }
 
   function toggleSource(key: WordSourceKey) {
     const next = wordSources.includes(key) ? wordSources.filter((k) => k !== key) : [...wordSources, key];
@@ -43,9 +53,40 @@ export default function SpaceRacerSettingsView() {
         <h1 className="mt-2 text-2xl font-bold text-[var(--hero-gold)]">⚙️ 太空賽車設定</h1>
 
         <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/5 p-4 text-zinc-200">
+          <h2 className="text-sm font-bold">🎯 題目類型</h2>
+          <p className="mt-1 text-xs text-zinc-400">
+            門裡出的題目類型，可複選，每一局隨機從勾選的類型抽一種：數列規律訓練邏輯推理，珠心算練心算，英文單字練拼字。預設只用「數列規律」。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {QUESTION_TYPE_OPTIONS.map((opt) => {
+              const checked = questionTypes.includes(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold"
+                  style={
+                    checked
+                      ? { background: '#ffcc33', color: '#1a1a2e' }
+                      : { background: 'rgba(255,255,255,0.08)', color: '#e2e8f0' }
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleQuestionType(opt.value as QuestionType)}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  {opt.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/5 p-4 text-zinc-200">
           <h2 className="text-sm font-bold">🏁 最高難度關卡</h2>
           <p className="mt-1 text-xs text-zinc-400">
-            難度會隨著玩的局數自動升級（每 5 局升一關，共 {MAX_LEVEL} 關），答錯不會被打回原本的關卡，只會停在原地繼續累積。這裡可以設定自動升級最高能升到第幾關。
+            數列規律／珠心算的難度會隨著玩的局數自動升級（每 5 局升一關，共 {MAX_LEVEL} 關：第 1 關數數暖身，第 2～9 關依序是 2～9 的乘法表，可以順便背九九乘法表），答錯不會被打回原本的關卡，只會停在原地繼續累積。這裡可以設定自動升級最高能升到第幾關。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {LEVEL_CAP_OPTIONS.map((opt) => {
@@ -89,7 +130,7 @@ export default function SpaceRacerSettingsView() {
             </button>
           </div>
           <p className="mt-1 text-xs text-zinc-400">
-            每玩 2 分鐘會暫停一次，考一題單字（英文選中文＋注音），答對五題連續才能繼續玩。考題只會從下方勾選的來源抽字；預設只用「本週單字」，可複選。
+            每玩 2 分鐘會暫停一次，考一題單字（英文選中文＋注音），答對五題連續才能繼續玩；如果上面「題目類型」也勾了「英文單字」，賽道上的門也會從這裡抽字。考題只會從下方勾選的來源抽字；預設只用「本週單字」，可複選。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {WORD_SOURCE_DISPLAY_ORDER.map((key) => {

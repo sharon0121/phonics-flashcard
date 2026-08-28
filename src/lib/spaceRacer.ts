@@ -1,6 +1,9 @@
 // Pure "logic sequence space racer" game logic — no React.
 // The player picks a lane, then dashes the car into the gate showing the
-// correct next number in a sequence (e.g. 2, 4, 6, ? -> dash into "8").
+// correct answer (a sequence's next number, an arithmetic result, or an
+// English word) among 3 lanes.
+
+import type { Word } from './types';
 
 export const LANES = 3 as const;
 export type Lane = 0 | 1 | 2;
@@ -10,6 +13,24 @@ export interface SequenceRound {
   answer: number; // the correct next term
   laneValues: [number, number, number]; // value shown in each lane's gate
   correctLane: Lane;
+}
+
+// What kind of question a round asks — parents pick which kinds are in play.
+export type QuestionType = 'sequence' | 'arithmetic' | 'vocab';
+export const QUESTION_TYPE_OPTIONS = [
+  { value: 'sequence', label: '🔢 數列規律' },
+  { value: 'arithmetic', label: '🧮 珠心算' },
+  { value: 'vocab', label: '📚 英文單字' },
+] as const;
+
+// The generalized shape every gate round produces, regardless of kind — the
+// view only ever needs prompt text + 3 lane strings + which lane is right.
+export interface RaceRound {
+  kind: QuestionType;
+  prompt: string; // shown at the top of the screen
+  laneValues: [string, string, string]; // text shown in each lane's gate
+  correctLane: Lane;
+  answerLabel: string; // human-readable correct answer, for "太慢了！答案是 X"
 }
 
 function randInt(lo: number, hi: number): number {
@@ -63,54 +84,30 @@ interface PatternSpec {
   diff: number;
   startMin: number;
   startMax: number;
+  // When true, startMin/startMax bound a MULTIPLIER k (start = diff * k)
+  // instead of the start value itself — every shown term then lands exactly
+  // on the diff's times table (e.g. 5, 10, 15, 20 — not "8, 13, 18, 23",
+  // which happens to share the same common difference but isn't recognizable
+  // as the 5x table). This is what makes the sequence double as multiplication
+  // table practice.
+  tableMode?: boolean;
 }
 
 // Each entry is the set of NEW patterns unlocked at that level; the pool for
 // a given level is the union of this level's entry and every entry before it.
+// Levels 2–9 walk straight through the 2x–9x tables (Taiwan's 九九乘法表
+// order), one table per level, so the ladder doubles as times-table drill —
+// by level 9 all of 2x–9x are mixed together for review.
 const LEVEL_UNLOCKS: PatternSpec[][] = [
-  // Level 1 — plain counting
-  [{ diff: 1, startMin: 1, startMax: 6 }],
-  // Level 2 — 2x / 5x tables, kept to small starting numbers
-  [
-    { diff: 2, startMin: 0, startMax: 10 },
-    { diff: 5, startMin: 0, startMax: 10 },
-  ],
-  // Level 3 — same tables, wider starting range
-  [
-    { diff: 2, startMin: 0, startMax: 30 },
-    { diff: 5, startMin: 0, startMax: 50 },
-  ],
-  // Level 4 — 10x table
-  [{ diff: 10, startMin: 0, startMax: 50 }],
-  // Level 5 — counting backwards
-  [{ diff: -1, startMin: 5, startMax: 20 }],
-  // Level 6 — counting backwards by 2 / 5 / 10
-  [
-    { diff: -2, startMin: 10, startMax: 30 },
-    { diff: -5, startMin: 25, startMax: 60 },
-    { diff: -10, startMin: 50, startMax: 90 },
-  ],
-  // Level 7 — other common differences
-  [
-    { diff: 3, startMin: 0, startMax: 20 },
-    { diff: 4, startMin: 0, startMax: 20 },
-    { diff: 6, startMin: 0, startMax: 20 },
-    { diff: 7, startMin: 0, startMax: 20 },
-  ],
-  // Level 8 — those differences, backwards
-  [
-    { diff: -3, startMin: 12, startMax: 30 },
-    { diff: -4, startMin: 16, startMax: 30 },
-    { diff: -6, startMin: 24, startMax: 40 },
-    { diff: -7, startMin: 28, startMax: 40 },
-  ],
-  // Level 9 (top) — everything, with numbers stretched out toward 100
-  [
-    { diff: 1, startMin: 1, startMax: 90 },
-    { diff: 2, startMin: 0, startMax: 46 },
-    { diff: 5, startMin: 0, startMax: 80 },
-    { diff: 10, startMin: 0, startMax: 60 },
-  ],
+  [{ diff: 1, startMin: 1, startMax: 6 }], // Level 1 — plain counting warm-up
+  [{ diff: 2, startMin: 1, startMax: 5, tableMode: true }], // Level 2 — 2的乘法表
+  [{ diff: 3, startMin: 1, startMax: 5, tableMode: true }], // Level 3 — 3的乘法表
+  [{ diff: 4, startMin: 1, startMax: 5, tableMode: true }], // Level 4 — 4的乘法表
+  [{ diff: 5, startMin: 1, startMax: 5, tableMode: true }], // Level 5 — 5的乘法表
+  [{ diff: 6, startMin: 1, startMax: 5, tableMode: true }], // Level 6 — 6的乘法表
+  [{ diff: 7, startMin: 1, startMax: 5, tableMode: true }], // Level 7 — 7的乘法表
+  [{ diff: 8, startMin: 1, startMax: 5, tableMode: true }], // Level 8 — 8的乘法表
+  [{ diff: 9, startMin: 1, startMax: 5, tableMode: true }], // Level 9 (top) — 9的乘法表 + full 2x–9x review
 ];
 
 function patternPoolForLevel(level: number): PatternSpec[] {
@@ -118,14 +115,17 @@ function patternPoolForLevel(level: number): PatternSpec[] {
   return LEVEL_UNLOCKS.slice(0, capped).flat();
 }
 
-// Builds a 4-term arithmetic sequence (ascending or descending depending on
-// the pattern's sign), the correct 5th term, and 2 plausible-but-wrong
-// distractors — then randomly assigns correct/wrong values to the 3 lanes.
+// Builds a 4-term arithmetic sequence, the correct 5th term, and 2
+// plausible-but-wrong distractors — then randomly assigns correct/wrong
+// values to the 3 lanes. In tableMode the start is snapped to a multiple of
+// diff so the whole sequence reads as a times-table segment.
 export function generateSequenceRound(level: number): SequenceRound {
   const pool = patternPoolForLevel(level);
   const spec = pool[Math.floor(Math.random() * pool.length)];
   const { diff } = spec;
-  const start = randInt(spec.startMin, spec.startMax);
+  const start = spec.tableMode
+    ? Math.abs(diff) * randInt(spec.startMin, spec.startMax)
+    : randInt(spec.startMin, spec.startMax);
 
   const sequence = [0, 1, 2, 3].map((i) => start + i * diff);
   const answer = start + 4 * diff;
@@ -157,6 +157,87 @@ export function generateSequenceRound(level: number): SequenceRound {
     laneValues: values as [number, number, number],
     correctLane: laneOrder[0],
   };
+}
+
+function sequenceToRaceRound(round: SequenceRound): RaceRound {
+  return {
+    kind: 'sequence',
+    prompt: `${round.sequence.join(', ')}, ?`,
+    laneValues: round.laneValues.map(String) as [string, string, string],
+    correctLane: round.correctLane,
+    answerLabel: String(round.answer),
+  };
+}
+
+// A simple 2-term "珠心算" (mental arithmetic) equation — operand size grows
+// gently with level, subtraction never goes negative.
+function generateArithmeticRound(level: number): RaceRound {
+  const maxVal = Math.min(30, 8 + level * 3);
+  let a = randInt(2, maxVal);
+  let b = randInt(1, maxVal);
+  const subtract = Math.random() < 0.4;
+  let op = '+';
+  let answer = a + b;
+  if (subtract) {
+    if (b > a) [a, b] = [b, a];
+    op = '−';
+    answer = a - b;
+  }
+
+  const distractorPool = new Set<number>();
+  for (const off of [1, -1, 2, -2, 3]) {
+    const candidate = answer + off;
+    if (candidate >= 0 && candidate !== answer) distractorPool.add(candidate);
+  }
+  const distractors = [...distractorPool].slice(0, 2);
+
+  const laneOrder = shuffleLanes([0, 1, 2]) as Lane[];
+  const values: string[] = [];
+  values[laneOrder[0]] = String(answer);
+  values[laneOrder[1]] = String(distractors[0]);
+  values[laneOrder[2]] = String(distractors[1]);
+
+  return {
+    kind: 'arithmetic',
+    prompt: `${a} ${op} ${b} = ?`,
+    laneValues: values as [string, string, string],
+    correctLane: laneOrder[0],
+    answerLabel: String(answer),
+  };
+}
+
+// Shows an emoji + Chinese meaning as the prompt, English spellings as the 3
+// lane choices — reuses whichever word pool the quiz settings select.
+function generateVocabRound(pool: Word[]): RaceRound {
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  const distractors = shuffleLanes(pool.filter((w) => w.id !== word.id)).slice(0, 2);
+
+  const laneOrder = shuffleLanes([0, 1, 2]) as Lane[];
+  const values: string[] = [];
+  values[laneOrder[0]] = word.word;
+  values[laneOrder[1]] = distractors[0].word;
+  values[laneOrder[2]] = distractors[1].word;
+
+  return {
+    kind: 'vocab',
+    prompt: `${word.emoji} ${word.zh}`,
+    laneValues: values as [string, string, string],
+    correctLane: laneOrder[0],
+    answerLabel: word.word,
+  };
+}
+
+// Picks a question kind from whichever the parent enabled (falling back to
+// 數列 if none are enabled, or if vocab is the only pick but the word pool
+// is too small for a 3-choice question) and builds that round.
+export function generateRaceRound(level: number, types: QuestionType[], wordPool: Word[]): RaceRound {
+  const requested = types.length > 0 ? types : (['sequence'] as QuestionType[]);
+  const usable = requested.filter((t) => t !== 'vocab' || wordPool.length >= 3);
+  const pool = usable.length > 0 ? usable : (['sequence'] as QuestionType[]);
+  const kind = pool[Math.floor(Math.random() * pool.length)];
+  if (kind === 'arithmetic') return generateArithmeticRound(level);
+  if (kind === 'vocab') return generateVocabRound(wordPool);
+  return sequenceToRaceRound(generateSequenceRound(level));
 }
 
 // Score per correct gate, scaled up a little by combo streak (capped so it
