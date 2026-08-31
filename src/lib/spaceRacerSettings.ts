@@ -1,6 +1,16 @@
 import { useSyncExternalStore } from 'react';
 import type { Word } from './types';
-import { LEVEL_CAP_OPTIONS, MAX_LEVEL, QUESTION_TYPE_OPTIONS, type LevelCap, type QuestionType } from './spaceRacer';
+import {
+  LEVEL_CAP_OPTIONS,
+  MAX_LEVEL,
+  QUESTION_TYPE_OPTIONS,
+  ARITHMETIC_SIZE_OPTIONS,
+  ARITHMETIC_TERMS_OPTIONS,
+  type LevelCap,
+  type QuestionType,
+  type ArithmeticSize,
+  type ArithmeticTerms,
+} from './spaceRacer';
 import {
   useThisWeekClimbWords,
   useReinforcementClimbWords,
@@ -13,18 +23,32 @@ import {
 } from './heroClimbSettings';
 import { useCustomWords } from './customWords';
 
-export { LEVEL_CAP_OPTIONS, MAX_LEVEL, QUESTION_TYPE_OPTIONS, WORD_SOURCE_LABELS, WORD_SOURCE_DISPLAY_ORDER, ALL_WORD_SOURCES };
-export type { LevelCap, QuestionType, WordSourceKey };
+export {
+  LEVEL_CAP_OPTIONS,
+  MAX_LEVEL,
+  QUESTION_TYPE_OPTIONS,
+  ARITHMETIC_SIZE_OPTIONS,
+  ARITHMETIC_TERMS_OPTIONS,
+  WORD_SOURCE_LABELS,
+  WORD_SOURCE_DISPLAY_ORDER,
+  ALL_WORD_SOURCES,
+};
+export type { LevelCap, QuestionType, WordSourceKey, ArithmeticSize, ArithmeticTerms };
 
 const LEVEL_CAP_KEY = 'space_racer_level_cap';
 const BEST_SCORE_KEY = 'space_racer_best_score';
 const WORD_SOURCES_KEY = 'space_racer_word_sources';
 const QUESTION_TYPES_KEY = 'space_racer_question_types';
+const ARITHMETIC_SIZE_KEY = 'space_racer_arithmetic_size';
+const ARITHMETIC_TERMS_KEY = 'space_racer_arithmetic_terms';
 const DEFAULT_LEVEL_CAP: LevelCap = 0;
 // Defaults to just this week's curriculum words, matching Puyo/Tetris/Block Puzzle's quiz.
 const DEFAULT_WORD_SOURCES: WordSourceKey[] = ['thisWeek'];
 // Defaults to just number sequences, preserving the game's original behavior.
 const DEFAULT_QUESTION_TYPES: QuestionType[] = ['sequence'];
+// 20-以內 / 2 個數字 roughly matches the old auto-scaled early-level difficulty.
+const DEFAULT_ARITHMETIC_SIZE: ArithmeticSize = 20;
+const DEFAULT_ARITHMETIC_TERMS: ArithmeticTerms = 2;
 
 const listeners = new Set<() => void>();
 let cachedCapRaw: string | null = null;
@@ -35,6 +59,10 @@ let cachedSourcesRaw: string | null = null;
 let cachedSources: WordSourceKey[] = DEFAULT_WORD_SOURCES;
 let cachedTypesRaw: string | null = null;
 let cachedTypes: QuestionType[] = DEFAULT_QUESTION_TYPES;
+let cachedArithSizeRaw: string | null = null;
+let cachedArithSize: ArithmeticSize = DEFAULT_ARITHMETIC_SIZE;
+let cachedArithTermsRaw: string | null = null;
+let cachedArithTerms: ArithmeticTerms = DEFAULT_ARITHMETIC_TERMS;
 
 function readLevelCap(): LevelCap {
   const raw = localStorage.getItem(LEVEL_CAP_KEY);
@@ -96,6 +124,28 @@ function readQuestionTypes(): QuestionType[] {
   return cachedTypes;
 }
 
+function readArithmeticSize(): ArithmeticSize {
+  const raw = localStorage.getItem(ARITHMETIC_SIZE_KEY);
+  if (raw === cachedArithSizeRaw) return cachedArithSize;
+  cachedArithSizeRaw = raw;
+  const parsed = raw == null ? DEFAULT_ARITHMETIC_SIZE : Number(raw);
+  const validValues = ARITHMETIC_SIZE_OPTIONS.map((o) => o.value);
+  cachedArithSize = validValues.includes(parsed as ArithmeticSize) ? (parsed as ArithmeticSize) : DEFAULT_ARITHMETIC_SIZE;
+  return cachedArithSize;
+}
+
+function readArithmeticTerms(): ArithmeticTerms {
+  const raw = localStorage.getItem(ARITHMETIC_TERMS_KEY);
+  if (raw === cachedArithTermsRaw) return cachedArithTerms;
+  cachedArithTermsRaw = raw;
+  const parsed = raw == null ? DEFAULT_ARITHMETIC_TERMS : Number(raw);
+  const validValues = ARITHMETIC_TERMS_OPTIONS.map((o) => o.value);
+  cachedArithTerms = validValues.includes(parsed as ArithmeticTerms)
+    ? (parsed as ArithmeticTerms)
+    : DEFAULT_ARITHMETIC_TERMS;
+  return cachedArithTerms;
+}
+
 function subscribe(callback: () => void): () => void {
   listeners.add(callback);
   window.addEventListener('storage', callback);
@@ -150,6 +200,26 @@ export function setSpaceRacerWordSources(sources: WordSourceKey[]): void {
   if (typeof window === 'undefined') return;
   const safe = sources.length > 0 ? sources : DEFAULT_WORD_SOURCES;
   localStorage.setItem(WORD_SOURCES_KEY, JSON.stringify(safe));
+  notify();
+}
+
+export function useSpaceRacerArithmeticSize(): ArithmeticSize {
+  return useSyncExternalStore(subscribe, readArithmeticSize, () => DEFAULT_ARITHMETIC_SIZE);
+}
+
+export function setSpaceRacerArithmeticSize(size: ArithmeticSize): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ARITHMETIC_SIZE_KEY, String(size));
+  notify();
+}
+
+export function useSpaceRacerArithmeticTerms(): ArithmeticTerms {
+  return useSyncExternalStore(subscribe, readArithmeticTerms, () => DEFAULT_ARITHMETIC_TERMS);
+}
+
+export function setSpaceRacerArithmeticTerms(terms: ArithmeticTerms): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ARITHMETIC_TERMS_KEY, String(terms));
   notify();
 }
 

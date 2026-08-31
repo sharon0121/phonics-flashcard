@@ -16,9 +16,14 @@ import {
   useSpaceRacerBestScore,
   reportSpaceRacerScore,
   useSpaceRacerQuizWords,
+  useSpaceRacerArithmeticSize,
+  useSpaceRacerArithmeticTerms,
   type LevelCap,
   type QuestionType,
+  type ArithmeticSize,
+  type ArithmeticTerms,
 } from '@/lib/spaceRacerSettings';
+import { drawVehicle, randomVehicleKind, type VehicleKind } from '@/lib/spaceRacerVehicles';
 import { useSpeechRate, SPEECH_RATE_VALUES } from '@/lib/heroClimbSettings';
 import { playCollectSound, playCelebrationChime, playExplosionSound, playErrorSound } from '@/lib/sound';
 import ZhuyinText from '@/components/ZhuyinText';
@@ -65,8 +70,10 @@ const GATE_Y = 148; // fixed Y where the answer gates wait, just past the finish
 const GATE_H = 62;
 const CAR_DASH_Y = GATE_Y + GATE_H - 10; // where the car arrives when it dashes into the gate
 const DASH_MS = 550; // forward dash duration
-const RETURN_MS = 420; // return-to-start duration
-const ROW_PAUSE_MS = 550; // pause after returning before the next gate appears
+const RETURN_MS = 420; // wrong answer: bounce back to the start line
+const CAR_ADVANCE_Y = -70; // correct answer: keep driving to, off the top of the canvas
+const ADVANCE_MS = 480; // correct answer: forward-through duration
+const ROW_PAUSE_MS = 550; // pause after resetting before the next gate appears
 const MAX_LIVES = 5;
 const LIFE_REGEN_STREAK = 5;
 const LANE_COLORS = ['#3b82f6', '#a855f7', '#f59e0b'];
@@ -127,7 +134,10 @@ interface GateRow {
   resolved: boolean;
 }
 
-type CarAnim = 'idle' | 'dashing' | 'returning';
+// 'dashing' = driving into the gate to answer; 'advancing' = correct answer,
+// keep driving forward off-screen (no visible retreat); 'returning' = wrong
+// answer, bounce back to the start line to sell the mistake.
+type CarAnim = 'idle' | 'dashing' | 'advancing' | 'returning';
 
 interface LiveState {
   phase: 'playing' | 'paused' | 'over';
@@ -210,7 +220,7 @@ function drawCheckerBand(ctx: CanvasRenderingContext2D, y: number, size: number)
 }
 
 // ─── Drawing ────────────────────────────────────────────────────────────────
-function drawFrame(ctx: CanvasRenderingContext2D, live: LiveState, now: number) {
+function drawFrame(ctx: CanvasRenderingContext2D, live: LiveState, now: number, vehicle: VehicleKind) {
   let shakeX = 0;
   let shakeY = 0;
   if (now < live.shakeUntil) {
@@ -255,8 +265,10 @@ function drawFrame(ctx: CanvasRenderingContext2D, live: LiveState, now: number) 
   drawCheckerBand(ctx, CAR_BASE_Y + 34, 12);
   drawCheckerBand(ctx, GATE_Y - 14, 12);
 
-  // Question prompt (sequence / arithmetic equation / emoji+Chinese word)
-  if (live.row) {
+  // Question prompt (sequence / arithmetic equation). Vocab rounds skip this
+  // — the view renders their Chinese+zhuyin prompt as an HTML overlay instead,
+  // since canvas text can't lay out ruby annotations.
+  if (live.row && live.row.round.kind !== 'vocab') {
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffcc33';
@@ -326,11 +338,11 @@ function drawFrame(ctx: CanvasRenderingContext2D, live: LiveState, now: number) 
   }
   ctx.globalAlpha = 1;
 
-  // Car — top-down race car (red body, gold racing stripe, dark windshield/wheels)
+  // Vehicle — whichever style the player picked in settings
   ctx.save();
   ctx.translate(live.carX, live.carY);
 
-  if (live.carAnim === 'dashing') {
+  if (live.carAnim === 'dashing' || live.carAnim === 'advancing') {
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.lineWidth = 3;
     for (const dx of [-10, 0, 10]) {
@@ -341,32 +353,7 @@ function drawFrame(ctx: CanvasRenderingContext2D, live: LiveState, now: number) 
     }
   }
 
-  // wheels
-  ctx.fillStyle = '#14161c';
-  ctx.fillRect(-16, -18, 7, 14);
-  ctx.fillRect(9, -18, 7, 14);
-  ctx.fillRect(-16, 6, 7, 14);
-  ctx.fillRect(9, 6, 7, 14);
-
-  // body
-  ctx.fillStyle = '#ef4444';
-  ctx.beginPath();
-  ctx.roundRect(-13, -24, 26, 48, 8);
-  ctx.fill();
-
-  // racing stripe
-  ctx.fillStyle = '#ffcc33';
-  ctx.fillRect(-3, -24, 6, 48);
-
-  // windshield (front, since the car drives "up")
-  ctx.fillStyle = '#1f2937';
-  ctx.beginPath();
-  ctx.roundRect(-8, -18, 16, 14, 4);
-  ctx.fill();
-
-  // spoiler (rear)
-  ctx.fillStyle = '#14161c';
-  ctx.fillRect(-14, 20, 28, 5);
+  drawVehicle(ctx, vehicle);
 
   ctx.restore();
 
@@ -407,8 +394,29 @@ export default function SpaceRacerView() {
     questionTypesRef.current = questionTypes;
   }, [questionTypes]);
 
+  const arithmeticSize = useSpaceRacerArithmeticSize();
+  const arithmeticSizeRef = useRef<ArithmeticSize>(arithmeticSize);
+  useEffect(() => {
+    arithmeticSizeRef.current = arithmeticSize;
+  }, [arithmeticSize]);
+
+  const arithmeticTerms = useSpaceRacerArithmeticTerms();
+  const arithmeticTermsRef = useRef<ArithmeticTerms>(arithmeticTerms);
+  useEffect(() => {
+    arithmeticTermsRef.current = arithmeticTerms;
+  }, [arithmeticTerms]);
+
+  // No settings knob for this — the vehicle look re-rolls randomly every
+  // round (see the row-spawn block in the game loop below), plus once here
+  // for the very first render before any round has spawned.
+  const [initialVehicle] = useState<VehicleKind>(randomVehicleKind);
+  const vehicleRef = useRef<VehicleKind>(initialVehicle);
+
   const [hud, setHud] = useState({ score: 0, lives: MAX_LIVES, combo: 0, level: 1 });
   const [canDash, setCanDash] = useState(false);
+  // Mirrors live.row.round for HTML-overlay rendering (vocab's Chinese+zhuyin
+  // prompt) — updated once per round spawn/clear, not every animation frame.
+  const [activeRound, setActiveRound] = useState<RaceRound | null>(null);
 
   // Accumulated actual play time since the last vocabulary quiz (paused/quiz
   // time doesn't count) — drives the every-2-minutes quiz interruption.
@@ -423,11 +431,20 @@ export default function SpaceRacerView() {
     quizWordsRef.current = quizWords;
   }, [quizWords]);
   const speechRate = SPEECH_RATE_VALUES[useSpeechRate()];
+  // The game loop's rAF closure is set up once (mount-only effect below), so
+  // it reads speech rate through this ref rather than the stale `speechRate`
+  // value captured at mount — same pattern as levelCapRef/questionTypesRef.
+  const speechRateRef = useRef(speechRate);
+  useEffect(() => {
+    speechRateRef.current = speechRate;
+  }, [speechRate]);
 
   // ── Restart ──────────────────────────────────────────────────────────────
   const restart = useCallback(() => {
     liveRef.current = freshLiveState();
+    vehicleRef.current = randomVehicleKind();
     setHud({ score: 0, lives: MAX_LIVES, combo: 0, level: 1 });
+    setActiveRound(null);
     playTimeRef.current = 0;
     quizActiveRef.current = false;
     setQuiz(null);
@@ -467,12 +484,21 @@ export default function SpaceRacerView() {
       playExplosionSound();
     }
 
+    // Vocab rounds: speak the correct English word after answering, right or
+    // wrong, so the child hears it either way — mirrors the popup quiz always
+    // narrating the Chinese answer regardless of outcome.
+    if (row.round.speakAnswerLang) {
+      const { answerLabel, speakAnswerLang } = row.round;
+      setTimeout(() => speakAsync(answerLabel, speakAnswerLang, speechRateRef.current), 250);
+    }
+
     reportSpaceRacerScore(live.score);
     setHud({ score: live.score, lives: live.lives, combo: live.combo, level: live.level });
 
     if (live.lives <= 0) {
       live.phase = 'over';
       live.row = null;
+      setActiveRound(null);
       bump();
     }
   }
@@ -492,18 +518,28 @@ export default function SpaceRacerView() {
     spawnBurst(live, laneCenterX(row.round.correctLane), GATE_Y + GATE_H / 2, '#ef4444', 22);
     playExplosionSound();
 
+    if (row.round.speakAnswerLang) {
+      const { answerLabel, speakAnswerLang } = row.round;
+      setTimeout(() => speakAsync(answerLabel, speakAnswerLang, speechRateRef.current), 250);
+    }
+
     reportSpaceRacerScore(live.score);
     setHud({ score: live.score, lives: live.lives, combo: live.combo, level: live.level });
 
     if (live.lives <= 0) {
       live.phase = 'over';
       live.row = null;
+      setActiveRound(null);
       bump();
       return;
     }
 
     live.row = null;
+    setActiveRound(null);
     live.nextRowAt = now + ROW_PAUSE_MS;
+    // Same rationale as the dash-resolve branches below: re-roll right as
+    // this round ends, not when the next one spawns.
+    vehicleRef.current = randomVehicleKind();
   }
 
   // ── Vocabulary quiz ───────────────────────────────────────────────────────
@@ -637,14 +673,23 @@ export default function SpaceRacerView() {
         if (!live.row && live.carAnim === 'idle' && now >= live.nextRowAt) {
           const level = effectiveLevel(live.roundsPlayed, levelCapRef.current);
           live.level = level;
-          live.row = {
-            round: generateRaceRound(level, questionTypesRef.current, quizWordsRef.current),
-            resolved: false,
-          };
+          const round = generateRaceRound(
+            level,
+            questionTypesRef.current,
+            quizWordsRef.current,
+            arithmeticSizeRef.current,
+            arithmeticTermsRef.current,
+          );
+          live.row = { round, resolved: false };
           const duration = roundTimeMsForLevel(level);
           live.roundDuration = duration;
           live.roundDeadline = now + duration;
           setHud((h) => (h.level === level ? h : { ...h, level }));
+          setActiveRound(round);
+          if (round.kind === 'vocab' && round.promptZh) {
+            const zhText = round.promptZh;
+            setTimeout(() => speakAsync(zhText, 'zh-TW', speechRateRef.current), 150);
+          }
         }
 
         // Time's up — the car never left the start line, so just resolve
@@ -658,20 +703,47 @@ export default function SpaceRacerView() {
           const t = Math.min(1, (now - live.animStart) / DASH_MS);
           live.carY = CAR_BASE_Y + (CAR_DASH_Y - CAR_BASE_Y) * t;
           if (t >= 1) {
+            const wasCorrect = live.row?.round.correctLane === live.dashLane;
             resolveRow(live, now, live.dashLane);
             if (live.phase === 'playing') {
-              live.carAnim = 'returning';
+              live.carAnim = wasCorrect ? 'advancing' : 'returning';
               live.animStart = now;
             }
           }
         } else if (live.carAnim === 'returning') {
+          // Wrong answer: visibly bounce back to the start line.
           const t = Math.min(1, (now - live.animStart) / RETURN_MS);
           live.carY = CAR_DASH_Y + (CAR_BASE_Y - CAR_DASH_Y) * t;
           if (t >= 1) {
             live.carAnim = 'idle';
             live.carY = CAR_BASE_Y;
             live.row = null;
+            setActiveRound(null);
             live.nextRowAt = now + ROW_PAUSE_MS;
+            // Re-roll the vehicle right as this round's car settles, not
+            // when the next gate spawns — otherwise the old vehicle sits
+            // parked and visible through the whole pause, then suddenly
+            // reskins. Rolling it here means it's already the new vehicle
+            // by the time the player is looking at it again.
+            vehicleRef.current = randomVehicleKind();
+          }
+        } else if (live.carAnim === 'advancing') {
+          // Correct answer: keep driving forward through the gate and off
+          // the top of the canvas instead of reversing — Sharon's feedback
+          // was that backing up after winning felt like never making
+          // progress. The car only reappears at the start line once it's
+          // fully off-screen, so the reset itself (position AND vehicle
+          // re-roll) is invisible — it just directly appears as the next
+          // vehicle.
+          const t = Math.min(1, (now - live.animStart) / ADVANCE_MS);
+          live.carY = CAR_DASH_Y + (CAR_ADVANCE_Y - CAR_DASH_Y) * t;
+          if (t >= 1) {
+            live.carAnim = 'idle';
+            live.carY = CAR_BASE_Y;
+            live.row = null;
+            setActiveRound(null);
+            live.nextRowAt = now + ROW_PAUSE_MS;
+            vehicleRef.current = randomVehicleKind();
           }
         }
       }
@@ -680,7 +752,7 @@ export default function SpaceRacerView() {
         live.phase === 'playing' && live.carAnim === 'idle' && !!live.row && !live.row.resolved;
       setCanDash(dashReady);
 
-      drawFrame(_ctx, live, now);
+      drawFrame(_ctx, live, now, vehicleRef.current);
     }
 
     const animRef = { current: 0 };
@@ -846,6 +918,20 @@ export default function SpaceRacerView() {
             className="block h-auto w-full rounded-xl"
             style={{ border: '2px solid #2d3a6e', touchAction: 'none' }}
           />
+
+          {activeRound?.kind === 'vocab' && activeRound.promptZh && !quiz && (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-10 flex items-center justify-center gap-1"
+              style={{ top: '4%', color: '#ffcc33' }}
+            >
+              <span className="text-xl sm:text-2xl">{activeRound.promptEmoji}</span>
+              <ZhuyinText
+                zh={activeRound.promptZh}
+                zhuyin={activeRound.promptZhuyin ?? ''}
+                className="zhuyin-word-wrap text-xl font-black sm:text-2xl"
+              />
+            </div>
+          )}
 
           {phase === 'paused' && !quiz && (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 rounded-xl bg-black/80">

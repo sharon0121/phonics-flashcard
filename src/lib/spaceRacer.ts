@@ -27,10 +27,20 @@ export const QUESTION_TYPE_OPTIONS = [
 // view only ever needs prompt text + 3 lane strings + which lane is right.
 export interface RaceRound {
   kind: QuestionType;
-  prompt: string; // shown at the top of the screen
+  prompt: string; // canvas fallback text (sequence/arithmetic draw this directly)
+  // Vocab rounds additionally carry the raw Chinese meaning so the view can
+  // render it with zhuyin (bopomofo) via <ZhuyinText> instead of plain canvas
+  // text, and speak it aloud — canvas can't lay out ruby annotations itself.
+  promptZh?: string;
+  promptZhuyin?: string;
+  promptEmoji?: string;
   laneValues: [string, string, string]; // text shown in each lane's gate
   correctLane: Lane;
   answerLabel: string; // human-readable correct answer, for "太慢了！答案是 X"
+  // When set, the view speaks answerLabel in this language once the round
+  // resolves (right or wrong) — only vocab rounds want this (hear the English
+  // word after answering); sequence/arithmetic answers are just numbers.
+  speakAnswerLang?: 'en-US' | 'zh-TW';
 }
 
 function randInt(lo: number, hi: number): number {
@@ -95,19 +105,23 @@ interface PatternSpec {
 
 // Each entry is the set of NEW patterns unlocked at that level; the pool for
 // a given level is the union of this level's entry and every entry before it.
-// Levels 2–9 walk straight through the 2x–9x tables (Taiwan's 九九乘法表
-// order), one table per level, so the ladder doubles as times-table drill —
-// by level 9 all of 2x–9x are mixed together for review.
+// Order follows Sharon's requested memorization sequence (easiest-to-recall
+// tables first, not numeric order): 1x → 10x → 5x → 2x → 3x → 4x → 6x/7x →
+// 8x+9x — so the ladder doubles as times-table drill in the order a child
+// actually learns 九九乘法表, and by level 9 all of 1x–9x are mixed for review.
 const LEVEL_UNLOCKS: PatternSpec[][] = [
-  [{ diff: 1, startMin: 1, startMax: 6 }], // Level 1 — plain counting warm-up
-  [{ diff: 2, startMin: 1, startMax: 5, tableMode: true }], // Level 2 — 2的乘法表
-  [{ diff: 3, startMin: 1, startMax: 5, tableMode: true }], // Level 3 — 3的乘法表
-  [{ diff: 4, startMin: 1, startMax: 5, tableMode: true }], // Level 4 — 4的乘法表
-  [{ diff: 5, startMin: 1, startMax: 5, tableMode: true }], // Level 5 — 5的乘法表
-  [{ diff: 6, startMin: 1, startMax: 5, tableMode: true }], // Level 6 — 6的乘法表
-  [{ diff: 7, startMin: 1, startMax: 5, tableMode: true }], // Level 7 — 7的乘法表
-  [{ diff: 8, startMin: 1, startMax: 5, tableMode: true }], // Level 8 — 8的乘法表
-  [{ diff: 9, startMin: 1, startMax: 5, tableMode: true }], // Level 9 (top) — 9的乘法表 + full 2x–9x review
+  [{ diff: 1, startMin: 1, startMax: 6, tableMode: true }], // Level 1 — 1的乘法表
+  [{ diff: 10, startMin: 1, startMax: 5, tableMode: true }], // Level 2 — 10的乘法表
+  [{ diff: 5, startMin: 1, startMax: 5, tableMode: true }], // Level 3 — 5的乘法表
+  [{ diff: 2, startMin: 1, startMax: 5, tableMode: true }], // Level 4 — 2的乘法表
+  [{ diff: 3, startMin: 1, startMax: 5, tableMode: true }], // Level 5 — 3的乘法表
+  [{ diff: 4, startMin: 1, startMax: 5, tableMode: true }], // Level 6 — 4的乘法表
+  [{ diff: 6, startMin: 1, startMax: 5, tableMode: true }], // Level 7 — 6的乘法表
+  [{ diff: 7, startMin: 1, startMax: 5, tableMode: true }], // Level 8 — 7的乘法表
+  [
+    { diff: 8, startMin: 1, startMax: 5, tableMode: true },
+    { diff: 9, startMin: 1, startMax: 5, tableMode: true },
+  ], // Level 9 (top) — 8的乘法表＋9的乘法表 + full 1x–9x review
 ];
 
 function patternPoolForLevel(level: number): PatternSpec[] {
@@ -169,20 +183,43 @@ function sequenceToRaceRound(round: SequenceRound): RaceRound {
   };
 }
 
-// A simple 2-term "珠心算" (mental arithmetic) equation — operand size grows
-// gently with level, subtraction never goes negative.
-function generateArithmeticRound(level: number): RaceRound {
-  const maxVal = Math.min(30, 8 + level * 3);
-  let a = randInt(2, maxVal);
-  let b = randInt(1, maxVal);
-  const subtract = Math.random() < 0.4;
-  let op = '+';
-  let answer = a + b;
-  if (subtract) {
-    if (b > a) [a, b] = [b, a];
-    op = '−';
-    answer = a - b;
+// Parent-facing "珠心算" difficulty knobs — how big the numbers get, and how
+// many of them get chained together in one equation. Unlike the sequence
+// ladder, this is a direct parent choice rather than auto-leveling, since
+// mental-math difficulty is much more about the parent's judgment of their
+// kid's current level than about rounds played.
+export const ARITHMETIC_SIZE_OPTIONS = [
+  { value: 10, label: '10 以內' },
+  { value: 20, label: '20 以內' },
+  { value: 50, label: '50 以內' },
+  { value: 100, label: '100 以內' },
+] as const;
+export type ArithmeticSize = (typeof ARITHMETIC_SIZE_OPTIONS)[number]['value'];
+
+export const ARITHMETIC_TERMS_OPTIONS = [
+  { value: 2, label: '2 個數字' },
+  { value: 3, label: '3 個數字' },
+  { value: 4, label: '4 個數字' },
+] as const;
+export type ArithmeticTerms = (typeof ARITHMETIC_TERMS_OPTIONS)[number]['value'];
+
+// A "珠心算" (mental arithmetic) equation chaining `termCount` numbers with
+// +/− — each step keeps a running total and only subtracts an amount the
+// total can afford, so the equation never dips negative partway through.
+function generateArithmeticRound(maxVal: ArithmeticSize, termCount: ArithmeticTerms): RaceRound {
+  let total = randInt(1, maxVal);
+  const parts: string[] = [String(total)];
+  for (let i = 1; i < termCount; i++) {
+    const subtract = Math.random() < 0.4 && total > 0;
+    const b = subtract ? randInt(1, total) : randInt(1, maxVal);
+    if (subtract) {
+      total -= b;
+    } else {
+      total += b;
+    }
+    parts.push(subtract ? '−' : '+', String(b));
   }
+  const answer = total;
 
   const distractorPool = new Set<number>();
   for (const off of [1, -1, 2, -2, 3]) {
@@ -199,7 +236,7 @@ function generateArithmeticRound(level: number): RaceRound {
 
   return {
     kind: 'arithmetic',
-    prompt: `${a} ${op} ${b} = ?`,
+    prompt: `${parts.join(' ')} = ?`,
     laneValues: values as [string, string, string],
     correctLane: laneOrder[0],
     answerLabel: String(answer),
@@ -221,21 +258,31 @@ function generateVocabRound(pool: Word[]): RaceRound {
   return {
     kind: 'vocab',
     prompt: `${word.emoji} ${word.zh}`,
+    promptZh: word.zh,
+    promptZhuyin: word.zhuyin,
+    promptEmoji: word.emoji,
     laneValues: values as [string, string, string],
     correctLane: laneOrder[0],
     answerLabel: word.word,
+    speakAnswerLang: 'en-US',
   };
 }
 
 // Picks a question kind from whichever the parent enabled (falling back to
 // 數列 if none are enabled, or if vocab is the only pick but the word pool
 // is too small for a 3-choice question) and builds that round.
-export function generateRaceRound(level: number, types: QuestionType[], wordPool: Word[]): RaceRound {
+export function generateRaceRound(
+  level: number,
+  types: QuestionType[],
+  wordPool: Word[],
+  arithmeticSize: ArithmeticSize,
+  arithmeticTerms: ArithmeticTerms,
+): RaceRound {
   const requested = types.length > 0 ? types : (['sequence'] as QuestionType[]);
   const usable = requested.filter((t) => t !== 'vocab' || wordPool.length >= 3);
   const pool = usable.length > 0 ? usable : (['sequence'] as QuestionType[]);
   const kind = pool[Math.floor(Math.random() * pool.length)];
-  if (kind === 'arithmetic') return generateArithmeticRound(level);
+  if (kind === 'arithmetic') return generateArithmeticRound(arithmeticSize, arithmeticTerms);
   if (kind === 'vocab') return generateVocabRound(wordPool);
   return sequenceToRaceRound(generateSequenceRound(level));
 }

@@ -9,6 +9,12 @@ import {
   useSpaceRacerQuestionTypes,
   setSpaceRacerQuestionTypes,
   QUESTION_TYPE_OPTIONS,
+  useSpaceRacerArithmeticSize,
+  setSpaceRacerArithmeticSize,
+  ARITHMETIC_SIZE_OPTIONS,
+  useSpaceRacerArithmeticTerms,
+  setSpaceRacerArithmeticTerms,
+  ARITHMETIC_TERMS_OPTIONS,
   useSpaceRacerWordSources,
   setSpaceRacerWordSources,
   WORD_SOURCE_LABELS,
@@ -16,12 +22,16 @@ import {
   ALL_WORD_SOURCES,
   type LevelCap,
   type QuestionType,
+  type ArithmeticSize,
+  type ArithmeticTerms,
   type WordSourceKey,
 } from '@/lib/spaceRacerSettings';
 
 export default function SpaceRacerSettingsView() {
   const levelCap = useSpaceRacerLevelCap();
   const questionTypes = useSpaceRacerQuestionTypes();
+  const arithmeticSize = useSpaceRacerArithmeticSize();
+  const arithmeticTerms = useSpaceRacerArithmeticTerms();
   const wordSources = useSpaceRacerWordSources();
 
   function toggleQuestionType(key: QuestionType) {
@@ -55,7 +65,7 @@ export default function SpaceRacerSettingsView() {
         <div className="mt-6 rounded-xl border-2 border-[var(--hero-gold)] bg-white/5 p-4 text-zinc-200">
           <h2 className="text-sm font-bold">🎯 題目類型</h2>
           <p className="mt-1 text-xs text-zinc-400">
-            門裡出的題目類型，可複選，每一局隨機從勾選的類型抽一種：數列規律訓練邏輯推理，珠心算練心算，英文單字練拼字。預設只用「數列規律」。
+            門裡出的題目類型，可複選，每一局隨機從勾選的類型抽一種：數列規律訓練邏輯推理，珠心算練心算，英文單字練拼字（題目會念出中文＋顯示注音，選完答案後會念出正確的英文單字）。預設只用「數列規律」。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {QUESTION_TYPE_OPTIONS.map((opt) => {
@@ -84,9 +94,68 @@ export default function SpaceRacerSettingsView() {
         </div>
 
         <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/5 p-4 text-zinc-200">
+          <h2 className="text-sm font-bold">🧮 珠心算難度</h2>
+          <p className="mt-1 text-xs text-zinc-400">
+            設定珠心算題目的數字大小上限，以及要有幾個數字連加減，家長可依小朋友程度直接設定，不會隨關卡自動變化。
+          </p>
+          <div className="mt-2 text-xs font-bold text-zinc-400">數字大小</div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {ARITHMETIC_SIZE_OPTIONS.map((opt) => {
+              const checked = arithmeticSize === opt.value;
+              return (
+                <label
+                  key={opt.value}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold"
+                  style={
+                    checked
+                      ? { background: '#ffcc33', color: '#1a1a2e' }
+                      : { background: 'rgba(255,255,255,0.08)', color: '#e2e8f0' }
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="arithmeticSize"
+                    checked={checked}
+                    onChange={() => setSpaceRacerArithmeticSize(opt.value as ArithmeticSize)}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  {opt.label}
+                </label>
+              );
+            })}
+          </div>
+          <div className="mt-3 text-xs font-bold text-zinc-400">相加減的數字個數</div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {ARITHMETIC_TERMS_OPTIONS.map((opt) => {
+              const checked = arithmeticTerms === opt.value;
+              return (
+                <label
+                  key={opt.value}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold"
+                  style={
+                    checked
+                      ? { background: '#ffcc33', color: '#1a1a2e' }
+                      : { background: 'rgba(255,255,255,0.08)', color: '#e2e8f0' }
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="arithmeticTerms"
+                    checked={checked}
+                    onChange={() => setSpaceRacerArithmeticTerms(opt.value as ArithmeticTerms)}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  {opt.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border-2 border-[var(--hero-gold)] bg-white/5 p-4 text-zinc-200">
           <h2 className="text-sm font-bold">🏁 最高難度關卡</h2>
           <p className="mt-1 text-xs text-zinc-400">
-            數列規律／珠心算的難度會隨著玩的局數自動升級（每 5 局升一關，共 {MAX_LEVEL} 關：第 1 關數數暖身，第 2～9 關依序是 2～9 的乘法表，可以順便背九九乘法表），答錯不會被打回原本的關卡，只會停在原地繼續累積。這裡可以設定自動升級最高能升到第幾關。
+            數列規律的難度會隨著玩的局數自動升級（每 5 局升一關，共 {MAX_LEVEL} 關，依序練習 1、10、5、2、3、4、6、7、8、9 的乘法表——照這個順序背九九乘法表比較好記），答錯不會被打回原本的關卡，只會停在原地繼續累積。這裡可以設定自動升級最高能升到第幾關。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {LEVEL_CAP_OPTIONS.map((opt) => {
