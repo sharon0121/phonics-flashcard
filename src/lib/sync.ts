@@ -10,12 +10,14 @@ import {
 import { loadPhotoStars, savePhotoStars, subscribePuzzle } from './puzzleProgress';
 import type { ProgressMap } from './types';
 import type { CurriculumMap } from './curriculum';
+import { ensureSyncCode, persistSyncCode, generateRandomCode } from './syncCode';
 
 // Cross-device sync for the pieces of state meant to follow the learner
 // across devices: flashcard progress, the weekly curriculum plan, and the
-// custom 國字 word list. Last-write-wins by timestamp — simple on purpose,
-// since this app has one learner, not multiple accounts negotiating
-// conflicts.
+// custom 國字 word list. Scoped by "sync code" (see syncCode.ts) so
+// different people's progress doesn't mix. Last-write-wins by timestamp
+// within a given code — simple on purpose, since each code has one learner,
+// not multiple accounts negotiating conflicts.
 
 const UPDATED_AT_KEY = 'sync_updated_at';
 const PUSH_DEBOUNCE_MS = 1500;
@@ -45,6 +47,20 @@ function setLocalUpdatedAt(ts: number): void {
   localStorage.setItem(UPDATED_AT_KEY, String(ts));
 }
 
+function emptySyncState(): SyncState {
+  return { progress: {}, curriculum: {}, hanziWords: [], klotskiProgress: {}, klotskiItemsUsed: 0, puzzlePhotoStars: {}, updatedAt: Date.now() };
+}
+
+function hasAnyLocalData(): boolean {
+  return (
+    Object.keys(loadProgress()).length > 0 ||
+    Object.keys(loadCurriculum()).length > 0 ||
+    loadHanziWords().length > 0 ||
+    Object.keys(loadKlotskiProgress()).length > 0 ||
+    Object.keys(loadPhotoStars()).length > 0
+  );
+}
+
 // Set while a server snapshot is being written back into localStorage, so
 // the onChange listeners below don't turn right around and push that same
 // snapshot back up to the server.
@@ -65,9 +81,16 @@ function applyServerState(state: SyncState): void {
   }
 }
 
+let activeCode: string | null = null;
+
+function syncUrl(code: string): string {
+  return `/api/sync?code=${encodeURIComponent(code)}`;
+}
+
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function pushNow(): Promise<void> {
+  if (!activeCode) return;
   const updatedAt = Date.now();
   const body: SyncState = {
     progress: loadProgress(),
@@ -79,7 +102,7 @@ async function pushNow(): Promise<void> {
     updatedAt,
   };
   try {
-    const res = await fetch('/api/sync', {
+    const res = await fetch(syncUrl(activeCode), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -103,6 +126,36 @@ function schedulePush(): void {
   pushTimer = setTimeout(pushNow, PUSH_DEBOUNCE_MS);
 }
 
+// Pulls the given code's cloud state and decides whether to adopt it or
+// push this device's current state up, based on which side actually has
+// real data — not just timestamps (a device with no history yet, or one
+// that just switched codes, always starts at "no local updatedAt", which
+// would otherwise unfairly lose to any existing record). Used both for a
+// device's very first sync and whenever the sync code is switched.
+async function runInitialSyncForCode(code: string): Promise<void> {
+  try {
+    const res = await fetch(syncUrl(code));
+    if (!res.ok) return;
+    const server = (await res.json()) as unknown;
+    const serverHasData =
+      isSyncState(server) &&
+      (Object.keys(server.progress).length > 0 ||
+        Object.keys(server.curriculum).length > 0 ||
+        (server.hanziWords?.length ?? 0) > 0);
+
+    const localHasData = hasAnyLocalData();
+    if (localHasData && !serverHasData) {
+      await pushNow();
+    } else if (isSyncState(server) && serverHasData) {
+      applyServerState(server);
+    } else {
+      await pushNow();
+    }
+  } catch {
+    // Offline or KV unavailable — the app still works fully from localStorage.
+  }
+}
+
 let started = false;
 
 // Called once at app startup: pulls the latest shared state and applies it
@@ -118,44 +171,18 @@ export function startSync(): void {
   subscribeKlotski(schedulePush);
   subscribePuzzle(schedulePush);
 
+  const looksLikeExistingDevice = localStorage.getItem(UPDATED_AT_KEY) !== null || hasAnyLocalData();
+  activeCode = ensureSyncCode(looksLikeExistingDevice);
+
   (async () => {
+    if (localStorage.getItem(UPDATED_AT_KEY) === null) {
+      await runInitialSyncForCode(activeCode!);
+      return;
+    }
     try {
-      const res = await fetch('/api/sync');
+      const res = await fetch(syncUrl(activeCode!));
       if (!res.ok) return;
       const server = (await res.json()) as unknown;
-      const serverHasData =
-        isSyncState(server) &&
-        (Object.keys(server.progress).length > 0 ||
-          Object.keys(server.curriculum).length > 0 ||
-          (server.hanziWords?.length ?? 0) > 0);
-
-      // A device that has never run sync before starts at updatedAt=0, which
-      // would always lose to *any* existing server record on a plain
-      // timestamp comparison — including a stale/empty one from a device
-      // that just happened to sync first. That would silently wipe out
-      // real progress this device already had. So on a device's first
-      // sync, decide by which SIDE actually has real data instead of by
-      // timestamp: if this device has real progress and the shared record
-      // doesn't yet, this device becomes the new baseline (push up); if the
-      // shared record already has real data, adopt it instead of clobbering
-      // it with this device's own possibly-stale local copy (pull down).
-      if (localStorage.getItem(UPDATED_AT_KEY) === null) {
-        const localHasData =
-          Object.keys(loadProgress()).length > 0 ||
-          Object.keys(loadCurriculum()).length > 0 ||
-          loadHanziWords().length > 0 ||
-          Object.keys(loadKlotskiProgress()).length > 0 ||
-          Object.keys(loadPhotoStars()).length > 0;
-        if (localHasData && !serverHasData) {
-          await pushNow();
-        } else if (isSyncState(server) && serverHasData) {
-          applyServerState(server);
-        } else {
-          await pushNow();
-        }
-        return;
-      }
-
       const localUpdatedAt = getLocalUpdatedAt();
       if (isSyncState(server) && server.updatedAt > localUpdatedAt) {
         applyServerState(server);
@@ -166,4 +193,29 @@ export function startSync(): void {
       // Offline or KV unavailable — the app still works fully from localStorage.
     }
   })();
+}
+
+// Called from the sync code control panel when the user types in a
+// different code to join — treated like a fresh device's first sync
+// against that code, so joining an empty/new code pushes this device's
+// data up, and joining an already-used code pulls its data down.
+export async function switchSyncCode(rawCode: string): Promise<string> {
+  const normalized = persistSyncCode(rawCode);
+  activeCode = normalized;
+  localStorage.removeItem(UPDATED_AT_KEY);
+  await runInitialSyncForCode(normalized);
+  return normalized;
+}
+
+// Wipes this device's local progress and starts a brand new, private code —
+// for a colleague who wants their own independent space from scratch rather
+// than joining someone else's code.
+export async function startFreshWithNewCode(): Promise<string> {
+  applyServerState(emptySyncState());
+  localStorage.removeItem(UPDATED_AT_KEY);
+  const newCode = generateRandomCode();
+  persistSyncCode(newCode);
+  activeCode = newCode;
+  await runInitialSyncForCode(newCode);
+  return newCode;
 }

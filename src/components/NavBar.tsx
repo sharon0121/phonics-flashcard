@@ -13,6 +13,7 @@ const navItems = [
   },
   { href: '/math', label: 'Math', icon: '🧮' },
   { href: '/games', label: 'Game', icon: '🎮' },
+  { href: '/sync', label: '代碼', icon: '🔑' },
 ];
 
 export default function NavBar() {
