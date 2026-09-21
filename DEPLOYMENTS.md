@@ -1,5 +1,21 @@
 # 部署紀錄
 
+## 2026-09-21 — dpl_FRMjd5T4ooWyQRprWhEMN4vN5RKq (v2.16.2)
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **補充上課單字（ai 家族）**：`words.ts` 新增 9 個字 ail/fail/jail/bail/rail/pail/aid/laid/maid，同步寫入本週單字（2026-09-21 那週，含既有的 tail/sail/mail/nail/paid 共 14 字）
+
+## 2026-09-01 — v2.16.1
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **補充上課單字（a_e 家族）**：`words.ts` 新增 9 個字 bake/fake/date/hate/mate/dame/fame/lame/same
+
 ## 2026-08-31 — dpl_3zoHBetY4vhHEi97KuRUTAhFHQAW (v2.16.0)
 
 **網址**：https://phonics-flashcard.vercel.app
