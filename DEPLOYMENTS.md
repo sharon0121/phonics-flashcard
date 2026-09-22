@@ -1,5 +1,14 @@
 # 部署紀錄
 
+## 2026-09-21 — dpl_9GcgzfeZpuias8QRy3foXMZBjeav (v2.17.0)
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **新增同步代碼機制**：學習進度改用「代碼」區分，避免以後分享給同事使用時進度互相覆蓋。`/api/sync` 改成用代碼分別存放（`phonics_sync_state:<代碼>`），同一組代碼在任何裝置都會看到同一份進度，不同代碼完全獨立。既有裝置（本來就有本機進度資料）會自動沿用舊資料，代碼固定為 `sharon`；全新裝置/瀏覽器則自動產生一組隨機代碼，不會動到 `sharon` 的資料。
+- **新增「🔑 同步代碼設定」控制台**（`/sync`，NavBar 新增「代碼」入口）：可顯示/複製目前代碼、輸入代碼加入其他裝置的進度、或建立一組全新代碼給其他人使用（會清空這台裝置目前看到的資料，開始全新空白進度）。
+
 ## 2026-09-21 — dpl_FRMjd5T4ooWyQRprWhEMN4vN5RKq (v2.16.2)
 
 **網址**：https://phonics-flashcard.vercel.app
