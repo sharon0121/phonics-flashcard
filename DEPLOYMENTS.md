@@ -1,5 +1,14 @@
 # 部署紀錄
 
+## 2026-10-16 — dpl_H9nCKD1BPvL2ZnDnFd6DckVJ1ExL (v2.17.1)
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **補充上課單字（ay 家族）**：`words.ts` 新增 4 個字 bay/ray/gay/lay（本週單字已另外寫入雲端，不需再處理）
+- **新增交接文件**：`HANDOFF.md`（交接總覽）＋`docs/handoff/`（詳細開發紀錄），`CLAUDE.md` 更新成目前的技術架構，方便換另一個 Claude 帳號繼續開發
+
 ## 2026-09-21 — dpl_9GcgzfeZpuias8QRy3foXMZBjeav (v2.17.0)
 
 **網址**：https://phonics-flashcard.vercel.app
