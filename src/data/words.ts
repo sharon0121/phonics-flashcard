@@ -484,6 +484,10 @@ const phase5Ay: Word[] = [
   { id: 'p5-ay-spray', word: 'spray', kk: '/spreɪ/', zh: '噴霧', zhuyin: 'ㄆㄣ ㄨˋ', en: 'tiny drops shot into the air', sentence: 'She uses a spray to water the plant.', emoji: '💦', phase: 5, phaseLabel: 'Phase 5：母音組合', subPhase: '母音組合 AY', subPhaseKey: 'ay', category: 'noun', highlight: 'ay' },
   { id: 'p5-ay-pay', word: 'pay', kk: '/peɪ/', zh: '付錢', zhuyin: 'ㄈㄨˋ ㄑㄧㄢˊ', en: 'to give money for something', sentence: 'I pay for the candy.', emoji: '💵', phase: 5, phaseLabel: 'Phase 5：母音組合', subPhase: '母音組合 AY', subPhaseKey: 'ay', category: 'action', highlight: 'ay' },
   { id: 'p5-ay-today', word: 'today', kk: '/təˈdeɪ/', zh: '今天', zhuyin: 'ㄐㄧㄣ ㄊㄧㄢ', en: 'this day', sentence: 'Today is a beautiful day.', emoji: '📅', phase: 5, phaseLabel: 'Phase 5：母音組合', subPhase: '母音組合 AY', subPhaseKey: 'ay', category: 'noun', highlight: 'ay' },
+  { id: 'p5-ay-bay', word: 'bay', kk: '/beɪ/', zh: '海灣', zhuyin: 'ㄏㄞˇ ㄨㄢ', en: 'sea water inside a curve of land', sentence: 'The boats rest in the bay.', emoji: '🏖️', phase: 5, phaseLabel: 'Phase 5：母音組合', subPhase: '母音組合 AY', subPhaseKey: 'ay', category: 'noun', highlight: 'ay' },
+  { id: 'p5-ay-ray', word: 'ray', kk: '/reɪ/', zh: '光線', zhuyin: 'ㄍㄨㄤ ㄒㄧㄢˋ', en: 'a thin line of light', sentence: 'A ray of sun comes in.', emoji: '🌞', phase: 5, phaseLabel: 'Phase 5：母音組合', subPhase: '母音組合 AY', subPhaseKey: 'ay', category: 'noun', highlight: 'ay' },
+  { id: 'p5-ay-gay', word: 'gay', kk: '/geɪ/', zh: '快樂的', zhuyin: 'ㄎㄨㄞˋ ㄌㄜˋ ㄉㄜ˙', en: 'happy and full of fun', sentence: 'We sing a gay song.', emoji: '🎶', phase: 5, phaseLabel: 'Phase 5：母音組合', subPhase: '母音組合 AY', subPhaseKey: 'ay', category: 'adjective', highlight: 'ay' },
+  { id: 'p5-ay-lay', word: 'lay', kk: '/leɪ/', zh: '放下；下蛋', zhuyin: 'ㄈㄤˋ ㄒㄧㄚˋ', en: 'to put something down', sentence: 'The hen lays an egg.', emoji: '🥚', phase: 5, phaseLabel: 'Phase 5：母音組合', subPhase: '母音組合 AY', subPhaseKey: 'ay', category: 'action', highlight: 'ay' },
 ];
 
 const phase5Ee: Word[] = [

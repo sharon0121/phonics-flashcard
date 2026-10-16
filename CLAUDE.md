@@ -1,15 +1,18 @@
 # 字卡學習平台（小朋友的英語自然發音字卡）
 
+> **接手必讀：開始任何工作前，先完整閱讀 `HANDOFF.md`（交接總覽：網址、權限、部署流程、快捷指令、架構地雷），需要細節再讀 `docs/handoff/`。**
+> 本檔下半部是最早期的字卡規格，仍適用於單字資料格式。
+
 ## 專案說明
-幫 Sharon 4 歲半的兒子製作英語自然發音字卡工具。
+「英雄學習平台」：幫 Sharon 4 歲半的兒子製作的學習網站（英文自然發音字卡＋英文／數學／小遊戲）。
 可在瀏覽器互動練習，也可列印成 A4 紙張字卡。
 
 ## 技術架構
-- **框架**：Next.js 14（App Router）
-- **樣式**：Tailwind CSS
+- **框架**：Next.js 16（App Router，有 breaking changes，見 `AGENTS.md`）、React 19
+- **樣式**：Tailwind CSS 4
 - **語言**：TypeScript
-- **進度追蹤**：localStorage
-- **部署目標**：Vercel
+- **進度追蹤**：localStorage ＋ Vercel KV 跨裝置同步（同步代碼機制）
+- **部署目標**：Vercel（團隊 `tsa-product-mgmt`）
 
 ---
 
@@ -102,27 +105,6 @@
 
 ---
 
-## 已完成的檔案
-
-- `src/lib/types.ts` — Word 介面定義（含 zh、zhuyin、kk、en、emoji、phase、highlight 欄位）
-- `src/lib/progress.ts` — localStorage 進度讀寫（loadProgress、saveProgress、updateWordProgress）
-- `src/components/WordHighlight.tsx` — 音韻標色元件（支援一般 highlight 和 Magic E 雙標）
-
-## 待完成的檔案（請繼續建置）
-
-依此順序建立：
-1. `src/data/words.ts` — 467 個單字完整資料（**最重要，分批寫入避免超限**）
-2. `src/app/layout.tsx` — 導覽列（繁體中文），連結：首頁、瀏覽、列印、進度、測驗
-3. `src/app/globals.css` — 加入 A4 列印 CSS（`.no-print`、`.print-only`、print media query）
-4. `src/app/page.tsx` — 首頁（六階段進度卡片總覽）
-5. `src/components/SpeakButton.tsx` — 朗讀按鈕（Web Speech API）
-6. `src/components/FlashCard.tsx` — 翻牌元件（正面英文／反面圖片＋注音）
-7. `src/components/PrintCard.tsx` — 列印用靜態字卡
-8. `src/app/browse/page.tsx` — 瀏覽字卡（按階段篩選）
-9. `src/app/print/page.tsx` — 列印設定頁面
-10. `src/app/progress/page.tsx` — 學習進度頁面
-11. `src/app/quiz/page.tsx` — 小測驗頁面
-
 ## Word 介面（types.ts）
 
 ```typescript
@@ -147,4 +129,4 @@ interface Word {
 - 所有 UI 文字使用**繁體中文**
 - 使用瀏覽器客戶端功能的元件需加 `'use client'`
 - 完成後先給 Sharon 確認再部署到 Vercel
-- Windows 部署指令：`npx vercel --prod`
+- 部署指令與完整流程見 `HANDOFF.md` 第 3 節（`npx vercel --prod --scope tsa-product-mgmt`，git push 不會自動部署）
