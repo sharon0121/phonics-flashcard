@@ -1,5 +1,14 @@
 # 部署紀錄
 
+## 2026-10-16 — dpl_5GWpU3C7AMrxupLijrfxydwqW8XQ (v2.17.2)
+
+**網址**：https://phonics-flashcard.vercel.app
+
+### 本次更新內容
+
+- **may／away 補進自然發音 AY 分類**：原本只在重要單字庫，現在 `words.ts` 也新增 `p5-ay-may`／`p5-ay-away`，瀏覽 AY 字卡時會一起出現
+- 本週單字（2026-10-12 那週）的 may／away 改成用自然發音庫的這兩張卡，其他 12 個 ay 字不變
+
 ## 2026-10-16 — dpl_H9nCKD1BPvL2ZnDnFd6DckVJ1ExL (v2.17.1)
 
 **網址**：https://phonics-flashcard.vercel.app
